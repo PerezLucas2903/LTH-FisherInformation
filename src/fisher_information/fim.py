@@ -104,7 +104,7 @@ class FisherInformationMatrix:
                         if name in self.mask.keys():
                             param.grad *= self.mask[name]
 
-            grad = torch.cat( list( p.grad.view(-1) for p in self.model.parameters() ) ).view(-1, 1)
+            grad = torch.cat( list( p.grad.view(-1) for p in self.model.parameters() ) ).view(-1)
             self.fim['complete'] +=  torch.outer(grad, grad)
 
 
@@ -148,23 +148,25 @@ class FisherInformationMatrix:
             fim = self.fim['complete']
             if self.concat_mask is not None:
                 fim = fim[self.concat_mask][:, self.concat_mask]
-            eigvals, eigvecs = torch.linalg.eig(fim)
-            eigvals = eigvals.to(torch.float)
+            #eigvals, eigvecs = torch.linalg.eig(fim)
+            #eigvals = eigvals.to(torch.float)
             #eigvals = eigvals[eigvals > 0] # If fim is positive definite, this is not needed
-            self.logdet = torch.sum(torch.log(eigvals)).item()
+            #self.logdet = torch.sum(torch.log(eigvals)).item()
+            self.logdet = torch.logdet(fim).item()
             self.diaglogdet = torch.sum(torch.log(torch.diag(fim))).item()
-            self.logdet_ratio = self.logdet - self.diaglogdet
+            self.logdet_ratio =  self.diaglogdet - self.logdet 
         else:
             logdets = {}
             diaglogdets = {}
             logdet_ratios = {}
             for name, fim in self.fim.items():
-                eigvals, eigvecs = torch.linalg.eig(fim)
+                #eigvals, eigvecs = torch.linalg.eig(fim)
                 #eigvals = eigvals[eigvals > 0] # If fim is positive definite, this is not needed
-                eigvals = eigvals.to(torch.float)
-                logdet = torch.sum(torch.log(eigvals)).item()
+                #eigvals = eigvals.to(torch.float)
+                #logdet = torch.sum(torch.log(eigvals)).item()
+                logdet = torch.logdet(fim).item()
                 diaglogdet = torch.sum(torch.log(torch.diag(fim))).item()
-                logdet_ratio = logdet - diaglogdet
+                logdet_ratio = diaglogdet - logdet
 
                 logdets[name] = logdet
                 diaglogdets[name] = diaglogdet
