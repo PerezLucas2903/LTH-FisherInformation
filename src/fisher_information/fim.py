@@ -56,7 +56,8 @@ class FisherInformationMatrix:
         self.compute_logdet_metrics()
 
     def _make_sampling_masks(self, model):
-        if self.sampling_type == 'complete':
+        #if self.sampling_type == 'complete':
+        if self.complete_fim:
             return None
         
         elif self.sampling_type == 'x_in_x':
@@ -71,12 +72,12 @@ class FisherInformationMatrix:
             sampling_masks = {}
             cycle_length = sum(self.sampling_frequency)
             for name, param in model.named_parameters():
-                if name == self.layers:
-                    mask = (torch.arange(param.numel()) % cycle_length) < self.sampling_frequency[0]
+                if name in self.layers:
+                    mask = (torch.arange(param.numel(), device=self.device) % cycle_length) < self.sampling_frequency[0]
                     sampling_masks[name] = torch.Tensor(mask).to(bool).to(self.device)
             return sampling_masks
         else:
-            raise ValueError(f"Unknown sampling method: {self.sampling}")
+            raise ValueError(f"Unknown sampling method: {self.sampling_type}")
         
     def _make_concat_mask(self, model):
         """ Mask is a dict of each of the models layer. In order to calculate logdet metrics of the complete FIM, we need to concatenate the masks into a single mask.
@@ -102,7 +103,6 @@ class FisherInformationMatrix:
     def _compute_fim_complete(self, model, dataloader, optimizer) -> dict:
         model.eval()
         eps = 1e-8
-
         for inputs, targets in dataloader:
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             optimizer.zero_grad()
@@ -116,7 +116,7 @@ class FisherInformationMatrix:
                         if name in self.mask.keys():
                             param.grad *= self.mask[name]
 
-            grad = torch.cat( list( p.grad.view(-1) for p in model.parameters() ) ).view(-1)
+            grad = torch.cat( list( p.grad.detach().view(-1) for p in model.parameters() ) ).view(-1)
             self.fim['complete'] +=  torch.outer(grad[self.concat_mask], grad[self.concat_mask])
 
 
@@ -126,7 +126,6 @@ class FisherInformationMatrix:
     def _compute_fim_layerwise(self, model, dataloader, optimizer) -> dict:
         model.eval()
         eps = 1e-8
-
         for inputs, targets in dataloader:
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             optimizer.zero_grad()
@@ -142,7 +141,7 @@ class FisherInformationMatrix:
 
             for name, param in model.named_parameters():
                 if param.requires_grad and name in self.layers:
-                    grad = param.grad.view(-1, 1)
+                    grad = param.grad.view(-1).detach()
                     self.fim[name] += torch.outer(grad, grad)
 
         for name in self.fim:

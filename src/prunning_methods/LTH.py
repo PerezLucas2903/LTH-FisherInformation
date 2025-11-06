@@ -75,7 +75,7 @@ def train_LTH(model, criterion, train_loader, test_loader, fim_loader, fim_args,
 
         output_dict['mask_list'].append(mask)
         output_dict['test_acc'].append(acc)
-        output_dict['fim_list'].append(fim)
+        output_dict['fim_list'].append(fim.cpu())
 
         model = reset_weights(model, initial_state_dict)
 
