@@ -14,6 +14,7 @@ class FisherInformationMatrix:
             model: nn.Module
             criterion: nn.Module
             optimizer: torch.optim
+            dataloader: torch.utils.data.DataLoader witch batch size = 1 to compute gradients per sample
             complete_fim: bool, if True computes the complete FIM, else layer-wise FIM
             layers: list of layer names to compute FIM for (if complete_fim is False)
             mask: dict of masks to apply to gradients
@@ -22,12 +23,9 @@ class FisherInformationMatrix:
 
         """
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.model = model.to(self.device)
-        self.dataloader = dataloader
         self.criterion = criterion
         self.layers = layers
         self.complete_fim = complete_fim
-        self.optimizer = optimizer
         self.mask = mask
         self.sampling_type = sampling_type
         self.sampling_frequency = sampling_frequency
@@ -35,33 +33,35 @@ class FisherInformationMatrix:
         if self.layers is None and not self.complete_fim:
             raise ValueError("Either 'layers' must be specified or 'complete_fim' must be True.")
         
-        self.sampling_masks = self._make_sampling_masks()
-        self.concat_mask = self._make_concat_mask()
-        self.logdet = None
-        self.diaglogdet = None
-        self.logdet_ratio = None
+        if self.layers is not None:
+            if not isinstance(self.layers, list):
+                raise ValueError("'layers' must be a list of layer names.")
+            param_names = [n for n, p in model.named_parameters()]
+            for name in self.layers:
+                if name not in param_names:
+                    raise ValueError(f"Layer name '{name}' not found in model parameters.")
+        
+        self.sampling_masks = self._make_sampling_masks(model)
+        self.concat_mask = self._make_concat_mask(model)
+
         
         if complete_fim:
-            n_params = self.concat_mask.sum().item() if self.concat_mask is not None else sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-            #n_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+            n_params = self.concat_mask.sum().item() if self.concat_mask is not None else sum(p.numel() for p in model.parameters() if p.requires_grad)
+            #n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             self.fim = {'complete': torch.zeros((n_params, n_params), device=self.device)}
         else:
-            self.fim = {name: torch.zeros((param.numel(), param.numel()), device=self.device) for name, param in self.model.named_parameters() if param.requires_grad and name in self.layers}
+            self.fim = {name: torch.zeros((param.numel(), param.numel()), device=self.device) for name, param in model.named_parameters() if param.requires_grad and name in self.layers}
 
-        self.compute_fim()
+        self.compute_fim(model.to(self.device), dataloader, optimizer)
         self.compute_logdet_metrics()
 
-        del self.model
-        del self.dataloader
-        del self.optimizer
-
-    def _make_sampling_masks(self):
+    def _make_sampling_masks(self, model):
         if self.sampling_type == 'complete':
             return None
         
         elif self.sampling_type == 'x_in_x':
             sampling_masks = {}
-            for name, param in self.model.named_parameters():
+            for name, param in model.named_parameters():
                 if name in self.layers:
                     mask = [True if i % self.sampling_frequency[0] == 0 else False for i in range(0, param.numel())]
                     sampling_masks[name] = torch.Tensor(mask).to(bool).to(self.device)
@@ -70,7 +70,7 @@ class FisherInformationMatrix:
         elif self.sampling_type == 'x_skip_y':
             sampling_masks = {}
             cycle_length = sum(self.sampling_frequency)
-            for name, param in self.model.named_parameters():
+            for name, param in model.named_parameters():
                 if name == self.layers:
                     mask = (torch.arange(param.numel()) % cycle_length) < self.sampling_frequency[0]
                     sampling_masks[name] = torch.Tensor(mask).to(bool).to(self.device)
@@ -78,7 +78,7 @@ class FisherInformationMatrix:
         else:
             raise ValueError(f"Unknown sampling method: {self.sampling}")
         
-    def _make_concat_mask(self):
+    def _make_concat_mask(self, model):
         """ Mask is a dict of each of the models layer. In order to calculate logdet metrics of the complete FIM, we need to concatenate the masks into a single mask.
         This is only needed if a mask is provided AND complete FIM is being computed.
 
@@ -88,10 +88,10 @@ class FisherInformationMatrix:
             return None
         
         if self.mask is None:
-            return torch.ones(sum(p.numel() for p in self.model.parameters() if p.requires_grad)).to(self.device).bool()
+            return torch.ones(sum(p.numel() for p in model.parameters() if p.requires_grad)).to(self.device).bool()
         
         concat_mask = torch.Tensor().to(self.device)
-        for name, param in self.model.named_parameters():
+        for name, param in model.named_parameters():
             if name in self.mask.keys():
                 concat_mask = torch.cat( (concat_mask, self.mask[name].view(-1).to(self.device)) )
             else:
@@ -99,61 +99,84 @@ class FisherInformationMatrix:
 
         return concat_mask.to(bool)
 
-    def _compute_fim_complete(self) -> dict:
-        self.model.eval()
+    def _compute_fim_complete(self, model, dataloader, optimizer) -> dict:
+        model.eval()
         eps = 1e-8
 
-        for inputs, targets in self.dataloader:
+        for inputs, targets in dataloader:
             inputs, targets = inputs.to(self.device), targets.to(self.device)
-            self.optimizer.zero_grad()
-            outputs = self.model(inputs)
+            optimizer.zero_grad()
+            outputs = model(inputs)
             loss = self.criterion(outputs, targets)
             loss.backward()
 
             if self.mask is not None:
                 with torch.no_grad():
-                    for name, param in self.model.named_parameters():
+                    for name, param in model.named_parameters():
                         if name in self.mask.keys():
                             param.grad *= self.mask[name]
 
-            grad = torch.cat( list( p.grad.view(-1) for p in self.model.parameters() ) ).view(-1)
+            grad = torch.cat( list( p.grad.view(-1) for p in model.parameters() ) ).view(-1)
             self.fim['complete'] +=  torch.outer(grad[self.concat_mask], grad[self.concat_mask])
 
 
-        self.fim['complete'] = torch.divide(self.fim['complete'], len(self.dataloader.dataset))
+        self.fim['complete'] = torch.divide(self.fim['complete'], len(dataloader.dataset))
         self.fim['complete'] += eps * torch.eye(self.fim['complete'].shape[0], dtype=self.fim['complete'].dtype).to(self.device)
 
-    def _compute_fim_layerwise(self) -> dict:
-        self.model.eval()
+    def _compute_fim_layerwise(self, model, dataloader, optimizer) -> dict:
+        model.eval()
         eps = 1e-8
 
-        for inputs, targets in self.dataloader:
+        for inputs, targets in dataloader:
             inputs, targets = inputs.to(self.device), targets.to(self.device)
-            self.optimizer.zero_grad()
-            outputs = self.model(inputs)
+            optimizer.zero_grad()
+            outputs = model(inputs)
             loss = self.criterion(outputs, targets)
             loss.backward()
 
             if self.mask is not None:
                 with torch.no_grad():
-                    for name, param in self.model.named_parameters():
+                    for name, param in model.named_parameters():
                         if name in self.mask.keys():
                             param.grad *= self.mask[name]
 
-            for name, param in self.model.named_parameters():
+            for name, param in model.named_parameters():
                 if param.requires_grad and name in self.layers:
                     grad = param.grad.view(-1, 1)
                     self.fim[name] += torch.outer(grad, grad)
 
         for name in self.fim:
-            self.fim[name] = torch.divide(self.fim[name], len(self.dataloader.dataset))
+            self.fim[name] = torch.divide(self.fim[name], len(dataloader.dataset))
             self.fim[name] += eps * torch.eye(self.fim[name].shape[0], dtype=self.fim[name].dtype).to(self.device)
 
-    def compute_fim(self) -> dict:
+    def _to_correlation_single(self, key, eps):
+        d = torch.diagonal(self.fim[key], dim1=-2, dim2=-1)  # (..., n)
+
+        if eps > 0:
+            d = d + eps
+        inv_sqrt_d = 1.0 / torch.sqrt(d)
+        # constrói D^{-1/2} como diagonal batelada
+        Dinv2 = torch.diag_embed(inv_sqrt_d)     # (..., n, n)
+        self.corr_fim[key] = Dinv2 @ self.fim[key] @ Dinv2
+        self.corr_fim_logdet_ratio[key] = 1 - torch.slogdet(self.corr_fim[key])[-1].item()
+
+    def to_correlation(self):
+        """
+        A: (..., n, n) SPD (real simétrica).
+        Retorna C = D^{-1/2} A D^{-1/2} com diag(C)=1.
+        eps: opcional p/ estabilidade (raramente necessário em SPD bem condicionado).
+        """
+        eps = 0 #1e-8
+        self.corr_fim = {}
+        self.corr_fim_logdet_ratio = {}
+        for key in self.fim:
+            self._to_correlation_single(key, eps)
+
+    def compute_fim(self, model, dataloader, optimizer) -> dict:
         if self.complete_fim:
-            self._compute_fim_complete()
+            self._compute_fim_complete(model, dataloader, optimizer)
         else:
-            self._compute_fim_layerwise()
+            self._compute_fim_layerwise(model, dataloader, optimizer)
 
     def compute_logdet_metrics(self):
         if self.complete_fim:

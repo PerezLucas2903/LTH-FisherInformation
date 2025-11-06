@@ -47,15 +47,15 @@ def reset_weights(model: nn.Module, initial_state_dict: dict) -> nn.Module:
         p.grad = None
     return model
 
-def _train_LTH_one_epoch(model, criterion, optimizer, train_loader, n_epochs=20, prunning_percentage=0.2, no_prunning_layers=None, verbose=True, use_scheduler=False):
+def _train_LTH_one_epoch(model, criterion, optimizer, train_loader, n_epochs=20, prunning_percentage=0.2, no_prunning_layers=None, verbose=True, print_freq=5,use_scheduler=False):
     pruner = LTHPruner(prunning_percentage, no_prunning_layers)
     mask = pruner.prune_weights(model)
-    model, loss_list = train(model, criterion, optimizer, train_loader, n_epochs, mask, verbose, use_scheduler)
+    model, loss_list = train(model, criterion, optimizer, train_loader, n_epochs, mask, verbose, use_scheduler, print_freq)
     return model, mask, loss_list
 
 def train_LTH(model, criterion, train_loader, test_loader, fim_loader, fim_args, lr = 1e-3,
               n_iterations=5, n_epochs=20, prunning_percentage=0.2, no_prunning_layers=None, 
-              verbose=True, use_scheduler=False, save_path=None) -> dict:
+              verbose=True, print_freq=5,use_scheduler=False, save_path=None) -> dict:
     
     initial_state_dict = copy.deepcopy(model.state_dict())
     output_dict = {'mask_list': [], 'test_acc': [], "fim_list" : []}
@@ -65,7 +65,7 @@ def train_LTH(model, criterion, train_loader, test_loader, fim_loader, fim_args,
         if verbose:
             print(f"LTH Iteration {it+1}/{n_iterations}")
             
-        model, mask, loss_list = _train_LTH_one_epoch(model, criterion, optimizer, train_loader, n_epochs, current_prunning_percentage, no_prunning_layers, verbose, use_scheduler)
+        model, mask, loss_list = _train_LTH_one_epoch(model, criterion, optimizer, train_loader, n_epochs, current_prunning_percentage, no_prunning_layers, verbose, print_freq,use_scheduler)
         acc = test(model, test_loader)
         fim_args['mask'] = mask
         if verbose:

@@ -11,7 +11,7 @@ Initial implementation of training and testing functions for models.
 This module assumes a classification task using CrossEntropyLoss.
 '''
 
-def train(model, criterion, optimizer, train_loader, n_epochs=20, mask=None, verbose=True, use_scheduler=False):
+def train(model, criterion, optimizer, train_loader, n_epochs=20, mask=None, verbose=True, use_scheduler=False, print_freq=5):
     loss_list = []
     if use_scheduler:
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200)
@@ -32,7 +32,7 @@ def train(model, criterion, optimizer, train_loader, n_epochs=20, mask=None, ver
                             p.grad *= mask[name]
             
             optimizer.step()
-        if (epc%5) == 0 and verbose:
+        if (epc%print_freq) == 0 and verbose:
             print(f"Epoch {epc+1}/{n_epochs}- Loss: {loss.item()}")
         if use_scheduler:
             scheduler.step()
