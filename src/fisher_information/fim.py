@@ -50,15 +50,27 @@ class FisherInformationMatrix:
             #n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             self.fim = {'complete': torch.zeros((n_params, n_params), device=self.device)}
         else:
-            self.fim = {name: torch.zeros((param.numel(), param.numel()), device=self.device) for name, param in model.named_parameters() if param.requires_grad and name in self.layers}
+            self.fim = {name: torch.zeros((mask.sum(), mask.sum()), device=self.device) for name, mask in self.sampling_masks.items() if name in self.layers}
 
         self.compute_fim(model.to(self.device), dataloader, optimizer)
         self.compute_logdet_metrics()
 
+    def _fim_to_device(self):
+        for key in self.fim:
+            self.fim[key] = self.fim[key].to(self.device)
+    
+    def _fim_to_cpu(self):
+        for key in self.fim:
+            self.fim[key] = self.fim[key].to('cpu')
+
     def _make_sampling_masks(self, model):
-        #if self.sampling_type == 'complete':
-        if self.complete_fim:
-            return None
+        if self.sampling_type == 'complete':
+            sampling_masks = {}
+            for name, param in model.named_parameters():
+                if name in self.layers:
+                    sampling_masks[name] = torch.ones(param.numel()).to(bool).to(self.device)
+
+            return sampling_masks
         
         elif self.sampling_type == 'x_in_x':
             sampling_masks = {}
@@ -66,6 +78,9 @@ class FisherInformationMatrix:
                 if name in self.layers:
                     mask = [True if i % self.sampling_frequency[0] == 0 else False for i in range(0, param.numel())]
                     sampling_masks[name] = torch.Tensor(mask).to(bool).to(self.device)
+                if self.mask is not None and name in self.mask:
+                    pruning_mask = self.mask[name].view(-1).to(dtype=torch.bool, device=self.device)
+                    sampling_masks[name] = sampling_masks[name] & pruning_mask
             return sampling_masks
         
         elif self.sampling_type == 'x_skip_y':
@@ -75,7 +90,11 @@ class FisherInformationMatrix:
                 if name in self.layers:
                     mask = (torch.arange(param.numel(), device=self.device) % cycle_length) < self.sampling_frequency[0]
                     sampling_masks[name] = torch.Tensor(mask).to(bool).to(self.device)
+                    if self.mask is not None and name in self.mask:
+                        pruning_mask = self.mask[name].view(-1).to(dtype=torch.bool, device=self.device)
+                        sampling_masks[name] = sampling_masks[name] & pruning_mask
             return sampling_masks
+        
         else:
             raise ValueError(f"Unknown sampling method: {self.sampling_type}")
         
@@ -141,12 +160,16 @@ class FisherInformationMatrix:
 
             for name, param in model.named_parameters():
                 if param.requires_grad and name in self.layers:
-                    grad = param.grad.view(-1).detach()
+                    grad = param.grad.view(-1).detach()[self.sampling_masks[name]]
                     self.fim[name] += torch.outer(grad, grad)
 
         for name in self.fim:
             self.fim[name] = torch.divide(self.fim[name], len(dataloader.dataset))
-            self.fim[name] += eps * torch.eye(self.fim[name].shape[0], dtype=self.fim[name].dtype).to(self.device)
+            n = self.fim[name].shape[0]
+            idx = torch.arange(n, device=self.fim[name].device)
+            self.fim[name][idx, idx] += eps
+
+            #self.fim[name] += eps * torch.eye(self.fim[name].shape[0], dtype=self.fim[name].dtype).to(self.device)
 
     def _to_correlation_single(self, key, eps):
         d = torch.diagonal(self.fim[key], dim1=-2, dim2=-1)  # (..., n)

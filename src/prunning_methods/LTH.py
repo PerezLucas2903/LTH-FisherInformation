@@ -71,11 +71,11 @@ def train_LTH(model, criterion, train_loader, test_loader, fim_loader, fim_args,
         if verbose:
             print(f"Test Accuracy after iteration {it+1}: {acc*100:.2f}%")
         fim = FisherInformationMatrix(model, criterion, optimizer, fim_loader, **fim_args)
-
+        fim._fim_to_cpu()
 
         output_dict['mask_list'].append(mask)
         output_dict['test_acc'].append(acc)
-        output_dict['fim_list'].append(fim.cpu())
+        output_dict['fim_list'].append(fim)
 
         model = reset_weights(model, initial_state_dict)
 
