@@ -64,7 +64,10 @@ class FisherInformationMatrix:
             self.fim[key] = self.fim[key].to('cpu')
 
     def _make_sampling_masks(self, model):
-        if self.sampling_type == 'complete':
+        if self.complete_fim:
+            return None
+    
+        elif self.sampling_type == 'complete' and not self.complete_fim:
             sampling_masks = {}
             for name, param in model.named_parameters():
                 if name in self.layers:

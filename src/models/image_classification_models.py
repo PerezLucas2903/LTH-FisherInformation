@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torchvision.models as models
 
 class ConvModelMNIST(nn.Module):
     def __init__(self):
@@ -33,3 +34,14 @@ class ConvModelEMNIST(nn.Module):
         )
     def forward(self, X):
         return self.net(X)
+    
+def mobilenet(num_classes: int = 10) -> nn.Module:
+    model = models.mobilenet_v3_small(num_classes=num_classes)
+    return model
+
+def resnet18(num_classes: int = 10) -> nn.Module:
+    model = models.resnet18(weights=None, num_classes=num_classes)
+    # Replace the 7x7 stride-2 conv + maxpool with a 3x3 stride-1 conv and no pool
+    model.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+    model.maxpool = nn.Identity()
+    return model
