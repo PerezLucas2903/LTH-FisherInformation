@@ -210,20 +210,24 @@ class FisherInformationMatrix:
             #     fim = fim[self.concat_mask][:, self.concat_mask]
             self.logdet = torch.slogdet(fim)[-1].item()
             self.diaglogdet = torch.sum(torch.log(torch.diag(fim))).item()
-            self.logdet_ratio =  self.diaglogdet - self.logdet 
+            self.logdet_ratio =  self.diaglogdet - self.logdet
+            self.logdet_ratio_per_dim = self.logdet_ratio / fim.shape[0] 
         else:
             logdets = {}
             diaglogdets = {}
             logdet_ratios = {}
+            logdet_ratios_per_dim = {}
             for name, fim in self.fim.items():
                 logdet = torch.slogdet(fim)[-1].item()
                 diaglogdet = torch.sum(torch.log(torch.diag(fim))).item()
-                logdet_ratio = diaglogdet - logdet
+                logdet_ratio = (diaglogdet + logdet)*(-1/2)
 
                 logdets[name] = logdet
                 diaglogdets[name] = diaglogdet
                 logdet_ratios[name] = logdet_ratio
+                logdet_ratios_per_dim[name] = logdet_ratio / fim.shape[0]
 
             self.logdet = logdets
             self.diaglogdet = diaglogdets
             self.logdet_ratio = logdet_ratios
+            self.logdet_ratio_per_dim = logdet_ratios_per_dim
