@@ -21,13 +21,13 @@ def _forward_linear(self, x):
     return F.linear(x, self.weight * self.weight_mask, self.bias)
 
 
-def snip(model, keep_ratio, train_loader, device):
+def snip(model, criterion, keep_ratio, train_loader, device):
     model.eval()
     data_iter = iter(train_loader)
     inputs, targets = next(data_iter)
     inputs, targets = inputs.to(device), targets.to(device)
 
-    # Perform SNIP on a copy of the model (to avoid modifying the original during scoring)
+    # Perform SNIP on a copy of the model
     net = copy.deepcopy(model).to(device)
     net.eval()
 
@@ -51,7 +51,7 @@ def snip(model, keep_ratio, train_loader, device):
     # Forward + backward on a single batch
     net.zero_grad(set_to_none=True)
     outputs = net(inputs)
-    loss = nn.CrossEntropyLoss()(outputs, targets)
+    loss = criterion(outputs, targets)
     loss.backward()
 
     
@@ -80,17 +80,16 @@ def snip(model, keep_ratio, train_loader, device):
 
     return mask_dict
 
-def train_snip(model, train_loader, test_loader, fim_loader, fim_args, keep_ratio, epochs,
+def train_snip(model, criterion, train_loader, test_loader, fim_loader, fim_args, keep_ratio, epochs,
     lr, verbose=True, use_scheduler=False, print_freq=5, save_path=None)-> dict:
     
     device = next(model.parameters()).device
 
     # Prunning
-    mask = snip(model, keep_ratio, train_loader, device)
+    mask = snip(model, criterion, keep_ratio, train_loader, device)
 
     # Train
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.CrossEntropyLoss()
     model, loss_list = train(
         model, criterion, optimizer, train_loader,
         n_epochs=epochs, mask=mask, verbose=verbose,
