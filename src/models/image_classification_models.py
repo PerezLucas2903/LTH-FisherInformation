@@ -36,7 +36,7 @@ class ConvModelEMNIST(nn.Module):
         return self.net(X)
     
 def mobilenet(num_classes: int = 10) -> nn.Module:
-    model = models.mobilenet_v3_small(num_classes=num_classes)
+    model = models.mobilenet_v2(weights=None, num_classes=num_classes)
     return model
 
 def resnet18(num_classes: int = 10) -> nn.Module:
