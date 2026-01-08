@@ -80,7 +80,7 @@ class FisherInformationMatrix:
             for name, param in model.named_parameters():
                 if name in self.layers:
                     mask = [True if i % self.sampling_frequency[0] == 0 else False for i in range(0, param.numel())]
-                    sampling_masks[name] = torch.Tensor(mask).to(bool).to(self.device)
+                    sampling_masks[name] = torch.Tensor(mask, device=self.device).to(bool)
                 if self.mask is not None and name in self.mask:
                     pruning_mask = self.mask[name].view(-1).to(dtype=torch.bool, device=self.device)
                     sampling_masks[name] = sampling_masks[name] & pruning_mask
@@ -92,7 +92,7 @@ class FisherInformationMatrix:
             for name, param in model.named_parameters():
                 if name in self.layers:
                     mask = (torch.arange(param.numel(), device=self.device) % cycle_length) < self.sampling_frequency[0]
-                    sampling_masks[name] = torch.Tensor(mask).to(bool).to(self.device)
+                    sampling_masks[name] = torch.Tensor(mask, device=self.device).to(bool)
                     if self.mask is not None and name in self.mask:
                         pruning_mask = self.mask[name].view(-1).to(dtype=torch.bool, device=self.device)
                         sampling_masks[name] = sampling_masks[name] & pruning_mask
