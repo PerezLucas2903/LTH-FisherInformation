@@ -36,11 +36,11 @@ class ConvModelEMNIST(nn.Module):
         return self.net(X)
     
 def mobilenet(num_classes: int = 10) -> nn.Module:
-    model = models.mobilenet_v2(weights=None, num_classes=num_classes)
+    model = models.mobilenet_v2(num_classes=num_classes)
     return model
 
 def resnet18(num_classes: int = 10, imagenet=False) -> nn.Module:
-    model = models.resnet18(weights=None, num_classes=num_classes)
+    model = models.resnet18(num_classes=num_classes)
     if not imagenet:
         # Replace the 7x7 stride-2 conv + maxpool with a 3x3 stride-1 conv and no pool
         model.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
@@ -48,7 +48,7 @@ def resnet18(num_classes: int = 10, imagenet=False) -> nn.Module:
     return model
 
 def resnet50(num_classes: int = 10, imagenet=False) -> nn.Module:
-    model = models.resnet50(weights=None, num_classes=num_classes)
+    model = models.resnet50(num_classes=num_classes)
     if not imagenet:
         # Replace the 7x7 stride-2 conv + maxpool with a 3x3 stride-1 conv and no pool
         model.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
@@ -56,7 +56,7 @@ def resnet50(num_classes: int = 10, imagenet=False) -> nn.Module:
     return model
 
 def wide_resnet(num_classes: int = 10, imagenet=False) -> nn.Module:
-    model = models.wide_resnet50_2(weights=None, num_classes=num_classes)
+    model = models.wide_resnet50_2(num_classes=num_classes)
     if not imagenet:
         # Replace the 7x7 stride-2 conv + maxpool with a 3x3 stride-1 conv and no pool
         model.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
@@ -64,9 +64,9 @@ def wide_resnet(num_classes: int = 10, imagenet=False) -> nn.Module:
     return model
 
 def densenet121(num_classes: int = 10) -> nn.Module:
-    model = models.densenet121(weights=None, num_classes=num_classes)
+    model = models.densenet121(num_classes=num_classes)
     return model
 
 def convnext_tiny(num_classes: int = 10) -> nn.Module:
-    model = models.convnext_tiny(weights=None, num_classes=num_classes)
+    model = models.convnext_tiny(num_classes=num_classes)
     return model
