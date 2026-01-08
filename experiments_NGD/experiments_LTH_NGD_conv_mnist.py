@@ -14,8 +14,9 @@ import sys
 sys.path.insert(0, str(src_path))
 
 from fisher_information.fim import FisherInformationMatrix
-from models.image_classification_models import ConvModelEMNIST
+from models.image_classification_models import ConvModelMNIST
 from prunning_methods.LTH import train_LTH  
+from fisher_information.NGD import *
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -29,32 +30,26 @@ def set_global_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
+
 def build_dataloaders():
+    """Create MNIST dataloaders."""
     data_root = repo_root / "data"
 
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Lambda(lambda x: torch.rot90(x, 1, [1, 2])),
-        transforms.Lambda(lambda x: torch.flip(x, [2])),
-    ])
+    transform = transforms.ToTensor()
 
-    emnist_train = torchvision.datasets.EMNIST(
-        root=data_root, split="letters", train=True, download=True,
-        transform=transform, target_transform=lambda y: y - 1
+    mnist_train = torchvision.datasets.MNIST(
+        root=data_root, train=True, download=True, transform=transform
     )
-    emnist_test = torchvision.datasets.EMNIST(
-        root=data_root, split="letters", train=False, download=True,
-        transform=transform, target_transform=lambda y: y - 1
+    mnist_test = torchvision.datasets.MNIST(
+        root=data_root, train=False, download=True, transform=transform
     )
-    
-    ys = [emnist_train[i][1] for i in range(1000)]  # amostra de 1000
-    print("EMNIST letters labels (sample): min =", min(ys), "max =", max(ys), flush=True)
 
-    train_loader = DataLoader(emnist_train, batch_size=256, shuffle=True)
-    fim_loader = DataLoader(emnist_train, batch_size=1, shuffle=True)
-    test_loader = DataLoader(emnist_test, batch_size=20, shuffle=True)
+    train_loader = DataLoader(mnist_train, batch_size=256, shuffle=True)
+    fim_loader = DataLoader(mnist_train, batch_size=1, shuffle=True)
+    test_loader = DataLoader(mnist_test, batch_size=20, shuffle=True)
 
     return train_loader, fim_loader, test_loader
+
 
 
 def run_experiments(
@@ -69,7 +64,7 @@ def run_experiments(
     Runs the Lottery Ticket Hypothesis (LTH) multiple times and aggregates results.
 
     For each LTH run:
-      - A new ConvModelEMNIST is initialized (with a different seed).
+      - A new ConvModelMNIST is initialized (with a different seed).
       - `train_LTH` is executed with the specified number of iterations and pruning percentage.
       - For each pruning step (100%, 90%, ..., 10%), store:
           (test_acc, fim_obj, mask, logdet_ratio, logdet_ratio_per_dim)
@@ -102,8 +97,7 @@ def run_experiments(
         print(f"========== Starting LTH run {run_idx + 1}/{n_lth_runs} (seed={seed}) ==========")
         set_global_seed(seed)
 
-        model = ConvModelEMNIST(n_classes=26).to(device)
-
+        model = ConvModelMNIST().to(device)
 
         LTH_args = {
             "model": model,
@@ -117,13 +111,15 @@ def run_experiments(
             "n_epochs": n_epochs,
             "prunning_percentage": prunning_percentage,
             "no_prunning_layers": None,
+            "real_opt": 'singd', # 'adam' or 'singd'
+            "structure": "dense", # "diag" or "dense"
             "verbose": True,
             "print_freq": 10,
             "use_scheduler": False,
             "save_path": None,
         }
 
-        output_dict = train_LTH(**LTH_args)
+        output_dict = train_LTH_adam_vs_ngd(**LTH_args)
 
         mask_list = output_dict["mask_list"]
         acc_list = output_dict["test_acc"]
@@ -158,7 +154,7 @@ def main():
     print("repo_root:", repo_root, flush=True)
     print("data_root:", (repo_root / "data"), flush=True)
     print("device:", device, flush=True)
-    n_lth_runs = 1
+    n_lth_runs = 10
     base_seed = 42
     n_iterations = 10
     prunning_percentage = 0.1
@@ -175,9 +171,9 @@ def main():
     )
 
     # Saving results
-    results_dir = repo_root / "results" / "Conv-EMNIST"
+    results_dir = repo_root / "results_NGD" / "Conv-MNIST"
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / "LTH_emnist_convmodel.pth"
+    out_path = results_dir / "LTH_NGD_mnist_convmodel.pth"
 
 
     print(f"\nSaving results to: {out_path}")

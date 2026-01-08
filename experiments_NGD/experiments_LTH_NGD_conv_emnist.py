@@ -16,6 +16,7 @@ sys.path.insert(0, str(src_path))
 from fisher_information.fim import FisherInformationMatrix
 from models.image_classification_models import ConvModelEMNIST
 from prunning_methods.LTH import train_LTH  
+from fisher_information.NGD import *
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -27,6 +28,7 @@ def set_global_seed(seed: int) -> None:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
 
 
 def build_dataloaders():
@@ -55,6 +57,7 @@ def build_dataloaders():
     test_loader = DataLoader(emnist_test, batch_size=20, shuffle=True)
 
     return train_loader, fim_loader, test_loader
+
 
 
 def run_experiments(
@@ -102,8 +105,7 @@ def run_experiments(
         print(f"========== Starting LTH run {run_idx + 1}/{n_lth_runs} (seed={seed}) ==========")
         set_global_seed(seed)
 
-        model = ConvModelEMNIST(n_classes=26).to(device)
-
+        model = ConvModelEMNIST().to(device)
 
         LTH_args = {
             "model": model,
@@ -117,13 +119,15 @@ def run_experiments(
             "n_epochs": n_epochs,
             "prunning_percentage": prunning_percentage,
             "no_prunning_layers": None,
+            "real_opt": 'singd', # 'adam' or 'singd'
+            "structure": "dense", # "diag" or "dense"
             "verbose": True,
             "print_freq": 10,
             "use_scheduler": False,
             "save_path": None,
         }
 
-        output_dict = train_LTH(**LTH_args)
+        output_dict = train_LTH_adam_vs_ngd(**LTH_args)
 
         mask_list = output_dict["mask_list"]
         acc_list = output_dict["test_acc"]
@@ -158,7 +162,7 @@ def main():
     print("repo_root:", repo_root, flush=True)
     print("data_root:", (repo_root / "data"), flush=True)
     print("device:", device, flush=True)
-    n_lth_runs = 1
+    n_lth_runs = 10
     base_seed = 42
     n_iterations = 10
     prunning_percentage = 0.1
@@ -175,9 +179,9 @@ def main():
     )
 
     # Saving results
-    results_dir = repo_root / "results" / "Conv-EMNIST"
+    results_dir = repo_root / "results_NGD" / "Conv-EMNIST"
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / "LTH_emnist_convmodel.pth"
+    out_path = results_dir / "LTH_NGD_emnist_convmodel.pth"
 
 
     print(f"\nSaving results to: {out_path}")

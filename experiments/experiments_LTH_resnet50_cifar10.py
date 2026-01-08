@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, str(src_path))
 
 from fisher_information.fim import FisherInformationMatrix
-from models.image_classification_models import densenet121
+from models.image_classification_models import resnet50
 from prunning_methods.LTH import train_LTH
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -109,7 +109,7 @@ def run_experiments(
     prunning_percentage: float = 0.1,
     n_epochs: int = 1,
     lr: float = 1e-3,
-    batch_size: int = 2048,
+    batch_size: int = 1028,
     fim_size: int = 5000,
 ) -> Dict[int, List[Tuple[float, FisherInformationMatrix, dict, Dict[str, float], Dict[str, float]]]]:
     """
@@ -129,10 +129,11 @@ def run_experiments(
     fim_args = {
         "complete_fim": False,
         "layers": [
-            "features.0.0.weight",
-            "features.1.0.block.0.weight",
-            "features.1.1.block.0.weight",
-            "features.1.2.block.0.weight"
+            "layer1.0.conv1.weight",
+            "layer1.0.conv2.weight",
+            "layer1.1.conv1.weight",
+            "layer1.1.conv2.weight",
+            "layer2.0.conv1.weight",
         ],
         "mask": None,
         "sampling_type": "x_skip_y",
@@ -149,7 +150,7 @@ def run_experiments(
         print(f"========== Starting LTH run {run_idx + 1}/{n_lth_runs} (seed={seed}) ==========", flush=True)
         set_global_seed(seed)
 
-        model = densenet121(num_classes=10).to(device)
+        model = resnet50(num_classes=10).to(device)
 
         LTH_args = {
             "model": model,
@@ -214,9 +215,9 @@ def main():
     base_seed = 42
     n_iterations = 10
     prunning_percentage = 0.1
-    n_epochs = 130
+    n_epochs = 150
     lr = 1e-3
-    batch_size = 2048
+    batch_size = 1028
     fim_size = 8000
 
     results = run_experiments(
@@ -230,9 +231,9 @@ def main():
         fim_size=fim_size,
     )
 
-    results_dir = repo_root / "results" / "DenseNet121-CIFAR10"
+    results_dir = repo_root / "results" / "ResNet50-CIFAR10"
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / "LTH_cifar10_densenet121.pth"
+    out_path = results_dir / "LTH_cifar10_resnet50.pth"
 
     print(f"\nSaving results to: {out_path}", flush=True)
     torch.save(results, out_path)

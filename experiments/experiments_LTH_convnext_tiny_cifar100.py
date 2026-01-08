@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, str(src_path))
 
 from fisher_information.fim import FisherInformationMatrix
-from models.image_classification_models import densenet121
+from models.image_classification_models import convnext_tiny
 from prunning_methods.LTH import train_LTH
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -149,7 +149,7 @@ def run_experiments(
         print(f"========== Starting LTH run {run_idx + 1}/{n_lth_runs} (seed={seed}) ==========", flush=True)
         set_global_seed(seed)
 
-        model = densenet121(num_classes=10).to(device)
+        model = convnext_tiny(num_classes=10).to(device)
 
         LTH_args = {
             "model": model,
@@ -210,7 +210,7 @@ def main():
     print("device:", device, flush=True)
 
     # defaults
-    n_lth_runs = 1
+    n_lth_runs = 5
     base_seed = 42
     n_iterations = 10
     prunning_percentage = 0.1
@@ -230,9 +230,9 @@ def main():
         fim_size=fim_size,
     )
 
-    results_dir = repo_root / "results" / "DenseNet121-CIFAR10"
+    results_dir = repo_root / "results" / "ConvNextTiny-CIFAR10"
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / "LTH_cifar10_densenet121.pth"
+    out_path = results_dir / "LTH_cifar10_convnext_tiny.pth"
 
     print(f"\nSaving results to: {out_path}", flush=True)
     torch.save(results, out_path)

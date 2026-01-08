@@ -210,7 +210,7 @@ def main():
     print("device:", device, flush=True)
 
     # defaults
-    n_lth_runs = 5
+    n_lth_runs = 1
     base_seed = 42
     n_iterations = 10
     prunning_percentage = 0.1
@@ -230,9 +230,9 @@ def main():
         fim_size=fim_size,
     )
 
-    results_dir = repo_root / "results" / "ConvNextTiny-CIFAR10"
+    results_dir = repo_root / "results" / "convnext_tiny-CIFAR10"
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / "LTH_cifar10_convnext_tiny_1.pth"
+    out_path = results_dir / "LTH_cifar10_convnext_tiny.pth"
 
     print(f"\nSaving results to: {out_path}", flush=True)
     torch.save(results, out_path)
