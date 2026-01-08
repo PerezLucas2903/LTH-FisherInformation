@@ -1,28 +1,37 @@
 import random
-import math
 from pathlib import Path
 from typing import Dict, List, Tuple
-
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision
+from torchvision import datasets
 import torchvision.transforms as T
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import random_split, TensorDataset, DataLoader, Subset
+import matplotlib.pyplot as plt
+import sys
+import math
+
+
+# # climb up to the repo root and add <repo>/src to Python's path
+# repo_root = Path().resolve().parents[0]   # parent of "notebooks"
+# sys.path.insert(0, str(repo_root / "src"))
 
 repo_root = Path(__file__).resolve().parents[1]
 src_path = repo_root / "src"
-import sys
 sys.path.insert(0, str(src_path))
 
 from fisher_information.fim import FisherInformationMatrix
-from models.image_classification_models import resnet18
-from prunning_methods.LTH import train_LTH
+from models.train_test import *
+#from prunning_methods.LTH import *
+from models.image_classification_models import resnet50
+from fisher_information.NGD import *
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-
 def set_global_seed(seed: int) -> None:
+    """Set the global seed for reproducibility."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -109,6 +118,10 @@ def build_dataloaders(
     return train_loader, fim_loader, test_loader
 
 
+#train_loader, fim_loader, test_loader = build_loaders('./data', 1028, device)
+
+
+
 def run_experiments(
     n_lth_runs: int = 10,
     base_seed: int = 42,
@@ -157,7 +170,7 @@ def run_experiments(
         print(f"========== Starting LTH run {run_idx + 1}/{n_lth_runs} (seed={seed}) ==========", flush=True)
         set_global_seed(seed)
 
-        model = resnet18(num_classes=10).to(device)
+        model = resnet50(num_classes=10).to(device)
 
         LTH_args = {
             "model": model,
@@ -171,13 +184,16 @@ def run_experiments(
             "n_epochs": n_epochs,
             "prunning_percentage": prunning_percentage,
             "no_prunning_layers": None,
+            "real_opt": 'singd', # 'adam' or 'singd'
+            "structure": "diagonal", # "diag" or "dense"
             "verbose": True,
             "print_freq": 10,
             "use_scheduler": False,
             "save_path": None,
         }
 
-        output_dict = train_LTH(**LTH_args)
+        
+        output_dict = train_LTH_adam_vs_ngd(**LTH_args)
 
         mask_list = output_dict["mask_list"]
         acc_list = output_dict["test_acc"]
@@ -222,7 +238,7 @@ def main():
     base_seed = 42
     n_iterations = 10
     prunning_percentage = 0.1
-    n_epochs = 100
+    n_epochs = 150
     lr = 1e-3
     batch_size = 1028
     fim_size = 8000
@@ -238,9 +254,9 @@ def main():
         fim_size=fim_size,
     )
 
-    results_dir = repo_root / "results" / "ResNet18-CIFAR10"
+    results_dir = repo_root / "results_NGD" / "ResNet50-SVHN"
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / "LTH_cifar10_resnet18_1.pth"
+    out_path = results_dir / "LTH_NGD_svhn_resnet50.pth"
 
     print(f"\nSaving results to: {out_path}", flush=True)
     torch.save(results, out_path)

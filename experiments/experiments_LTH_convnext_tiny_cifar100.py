@@ -59,10 +59,10 @@ def build_dataloaders(
         T.Normalize(mean, std),
     ])
 
-    train_set = torchvision.datasets.CIFAR10(
+    train_set = torchvision.datasets.CIFAR100(
         root=data_root, train=True, download=True, transform=train_tf
     )
-    test_set = torchvision.datasets.CIFAR10(
+    test_set = torchvision.datasets.CIFAR100(
         root=data_root, train=False, download=True, transform=test_tf
     )
 
@@ -79,7 +79,7 @@ def build_dataloaders(
     )
 
     # Build a balanced subset for FIM
-    num_classes = 10
+    num_classes = 100
     assert fim_size % num_classes == 0, f"fim_size ({fim_size}) must be divisible by {num_classes}"
     per_class = fim_size // num_classes
 
@@ -149,7 +149,7 @@ def run_experiments(
         print(f"========== Starting LTH run {run_idx + 1}/{n_lth_runs} (seed={seed}) ==========", flush=True)
         set_global_seed(seed)
 
-        model = convnext_tiny(num_classes=10).to(device)
+        model = convnext_tiny(num_classes=100).to(device)
 
         LTH_args = {
             "model": model,
@@ -210,7 +210,7 @@ def main():
     print("device:", device, flush=True)
 
     # defaults
-    n_lth_runs = 5
+    n_lth_runs = 1
     base_seed = 42
     n_iterations = 10
     prunning_percentage = 0.1
@@ -230,9 +230,9 @@ def main():
         fim_size=fim_size,
     )
 
-    results_dir = repo_root / "results" / "ConvNextTiny-CIFAR10"
+    results_dir = repo_root / "results" / "ConvNextTiny-CIFAR100"
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / "LTH_cifar10_convnext_tiny.pth"
+    out_path = results_dir / "LTH_cifar100_convnext_tiny.pth"
 
     print(f"\nSaving results to: {out_path}", flush=True)
     torch.save(results, out_path)

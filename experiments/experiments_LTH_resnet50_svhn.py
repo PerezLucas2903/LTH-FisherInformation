@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, str(src_path))
 
 from fisher_information.fim import FisherInformationMatrix
-from models.image_classification_models import resnet18
+from models.image_classification_models import resnet50
 from prunning_methods.LTH import train_LTH
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -157,7 +157,7 @@ def run_experiments(
         print(f"========== Starting LTH run {run_idx + 1}/{n_lth_runs} (seed={seed}) ==========", flush=True)
         set_global_seed(seed)
 
-        model = resnet18(num_classes=10).to(device)
+        model = resnet50(num_classes=10).to(device)
 
         LTH_args = {
             "model": model,
@@ -222,7 +222,7 @@ def main():
     base_seed = 42
     n_iterations = 10
     prunning_percentage = 0.1
-    n_epochs = 100
+    n_epochs = 150
     lr = 1e-3
     batch_size = 1028
     fim_size = 8000
@@ -238,9 +238,9 @@ def main():
         fim_size=fim_size,
     )
 
-    results_dir = repo_root / "results" / "ResNet18-CIFAR10"
+    results_dir = repo_root / "results" / "ResNet50-SVHN"
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / "LTH_cifar10_resnet18_1.pth"
+    out_path = results_dir / "LTH_svhn_resnet50_1.pth"
 
     print(f"\nSaving results to: {out_path}", flush=True)
     torch.save(results, out_path)

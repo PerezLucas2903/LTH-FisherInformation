@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, str(src_path))
 
 from fisher_information.fim import FisherInformationMatrix
-from models.image_classification_models import resnet18
+from models.image_classification_models import wide_resnet
 from prunning_methods.LTH import train_LTH
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -136,11 +136,9 @@ def run_experiments(
     fim_args = {
         "complete_fim": False,
         "layers": [
-            "layer1.0.conv1.weight",
-            "layer1.0.conv2.weight",
-            "layer1.1.conv1.weight",
-            "layer1.1.conv2.weight",
-            "layer2.0.conv1.weight",
+            'conv1.weight', 
+            "layer1.0.conv1.weight", 
+            "layer1.1.conv3.weight"
         ],
         "mask": None,
         "sampling_type": "x_skip_y",
@@ -157,7 +155,7 @@ def run_experiments(
         print(f"========== Starting LTH run {run_idx + 1}/{n_lth_runs} (seed={seed}) ==========", flush=True)
         set_global_seed(seed)
 
-        model = resnet18(num_classes=10).to(device)
+        model = wide_resnet(num_classes=10).to(device)
 
         LTH_args = {
             "model": model,
@@ -238,9 +236,9 @@ def main():
         fim_size=fim_size,
     )
 
-    results_dir = repo_root / "results" / "ResNet18-CIFAR10"
+    results_dir = repo_root / "results" / "wide_resnet-SVHN"
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / "LTH_cifar10_resnet18_1.pth"
+    out_path = results_dir / "LTH_svhn_wide_resnet.pth"
 
     print(f"\nSaving results to: {out_path}", flush=True)
     torch.save(results, out_path)
