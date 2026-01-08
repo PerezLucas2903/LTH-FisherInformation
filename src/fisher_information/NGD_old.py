@@ -1,47 +1,22 @@
-"""
-hybrid_singd_adam_lth.py
-
-Single-file implementation of your LTH experiment comparing Adam vs SINGD (NGD),
-with an automatic fallback that updates SINGD-UNSUPPORTED layers using Adam only.
-
-Key behavior:
-- SINGD updates supported layers.
-- Any layers SINGD reports as "will not be trained" are automatically updated by
-  an Adam "fallback" optimizer that only owns those parameters.
-
-You can drop this file into your project and import the functions you already use:
-- train_LTH_adam_vs_ngd(...)
-"""
-
 import os
 from pathlib import Path
 import sys
 import copy
-import re
-import warnings
-from typing import Optional, Iterable, Dict, Any, Set, List, Tuple
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from singd.optim.optimizer import SINGD  # external NGD / K-FAC-like optimizer
 
-# --- Your repo import (as you had it) ---
 repo_root = Path().resolve().parents[0]
 sys.path.insert(0, str(repo_root / "src"))
-from prunning_methods.LTH import *  # noqa: F401,F403  (LTHPruner, reset_weights, test, FisherInformationMatrix, ...)
+from prunning_methods.LTH import *  # LTHPruner, reset_weights, test, FisherInformationMatrix, ...
 
 
-# =============================================================================
-# Utilities
-# =============================================================================
-
-def _flatten_params(params_iterable: Iterable[torch.Tensor]) -> torch.Tensor:
+def _flatten_params(params_iterable):
     return torch.cat([p.view(-1) for p in params_iterable])
 
 
-def build_flat_mask(mask_dict: dict, model: nn.Module) -> torch.Tensor:
+def build_flat_mask(mask_dict, model):
     flats = []
     for name, p in model.named_parameters():
         if name in mask_dict:
@@ -52,169 +27,13 @@ def build_flat_mask(mask_dict: dict, model: nn.Module) -> torch.Tensor:
     return torch.cat(flats)
 
 
-def _get_submodule_safe(model: nn.Module, name: str) -> nn.Module:
-    """Torch-safe get_submodule with a fallback for older versions."""
-    if hasattr(model, "get_submodule"):
-        return model.get_submodule(name)
-
-    cur = model
-    for part in name.split("."):
-        if not hasattr(cur, part):
-            raise AttributeError(f"Model has no submodule '{name}' (failed at '{part}')")
-        cur = getattr(cur, part)
-    return cur
-
-
-_UNSUPPORTED_LAYER_RE = re.compile(r"will not be trained in layer\s+([^:]+):")
-
-
-def _parse_unsupported_layer_names_from_warnings(
-    warning_records: Iterable[warnings.WarningMessage],
-) -> Set[str]:
-    names: Set[str] = set()
-    for w in warning_records:
-        msg = str(w.message)
-        m = _UNSUPPORTED_LAYER_RE.search(msg)
-        if m:
-            names.add(m.group(1).strip())
-    return names
-
-
-# =============================================================================
-# Hybrid optimizer: SINGD + Adam fallback for unsupported layers
-# =============================================================================
-
-class HybridSINGD:
-    """
-    Optimizer-like wrapper:
-      - SINGD updates supported layers
-      - Adam updates ONLY the parameters belonging to layers SINGD warned are unsupported
-
-    This wrapper supports .zero_grad(set_to_none=...) and .step().
-    """
-
-    def __init__(self, singd_opt: SINGD, adam_fallback_opt: Optional[torch.optim.Optimizer] = None):
-        self.singd = singd_opt
-        self.adam_fallback = adam_fallback_opt
-
-        # Make it look optimizer-like (some code expects param_groups)
-        self.param_groups = []
-        if hasattr(self.singd, "param_groups"):
-            self.param_groups += list(self.singd.param_groups)
-        if self.adam_fallback is not None and hasattr(self.adam_fallback, "param_groups"):
-            self.param_groups += list(self.adam_fallback.param_groups)
-
-    def zero_grad(self, set_to_none: bool = True):
-        self.singd.zero_grad(set_to_none=set_to_none)
-        if self.adam_fallback is not None:
-            self.adam_fallback.zero_grad(set_to_none=set_to_none)
-
-    @torch.no_grad()
-    def step(self, closure=None):
-        out = self.singd.step(closure=closure)
-        if self.adam_fallback is not None:
-            self.adam_fallback.step(closure=closure)
-        return out
-
-    def state_dict(self) -> Dict[str, Any]:
-        d = {"singd": self.singd.state_dict()}
-        if self.adam_fallback is not None:
-            d["adam_fallback"] = self.adam_fallback.state_dict()
-        return d
-
-    def load_state_dict(self, state_dict: Dict[str, Any]):
-        self.singd.load_state_dict(state_dict["singd"])
-        if self.adam_fallback is not None and "adam_fallback" in state_dict:
-            self.adam_fallback.load_state_dict(state_dict["adam_fallback"])
-
-    def __getattr__(self, item: str):
-        """
-        Forward unknown attributes to the wrapped SINGD optimizer.
-        This helps if external code accesses .defaults, etc.
-        """
-        return getattr(self.singd, item)
-
-
-def build_singd_with_adam_fallback(
-    model: nn.Module,
-    *,
-    ngd_lr: float,
-    structure: str,
-    adam_reference: torch.optim.Optimizer,
-    warn_unsupported: bool = True,
-    verbose: bool = True,
-) -> Tuple[HybridSINGD, Set[str]]:
-    """
-    Construct SINGD and parse its warnings to detect unsupported layers.
-    Then create an Adam optimizer over ONLY those layers' parameters.
-
-    Returns:
-      (hybrid_optimizer, unsupported_layer_names)
-    """
-    # Copy Adam hyperparams from the provided Adam optimizer (group 0)
-    g0 = adam_reference.param_groups[0]
-    adam_kwargs = dict(
-        lr=g0.get("lr", ngd_lr),
-        betas=g0.get("betas", (0.9, 0.999)),
-        eps=g0.get("eps", 1e-8),
-        weight_decay=g0.get("weight_decay", 0.0),
-        amsgrad=g0.get("amsgrad", False),
-    )
-
-    # Capture SINGD warnings during construction
-    with warnings.catch_warnings(record=True) as rec:
-        warnings.simplefilter("always", UserWarning)
-        singd_opt = SINGD(
-            model,
-            lr=ngd_lr,
-            structures=(structure, structure),
-            warn_unsupported=warn_unsupported,
-        )
-
-    unsupported_layers = _parse_unsupported_layer_names_from_warnings(rec)
-
-    # Collect params belonging to those layers (non-recursive: only the module's own params)
-    unsupported_params: List[torch.nn.Parameter] = []
-    for layer_name in sorted(unsupported_layers):
-        try:
-            m = _get_submodule_safe(model, layer_name)
-        except Exception:
-            # If we can't resolve the module path, skip it (better than crashing)
-            continue
-
-        for p in m.parameters(recurse=False):
-            if p.requires_grad:
-                unsupported_params.append(p)
-
-    # Deduplicate by object id
-    uniq: Dict[int, torch.nn.Parameter] = {}
-    for p in unsupported_params:
-        uniq[id(p)] = p
-    unsupported_params = list(uniq.values())
-
-    adam_fallback = None
-    if len(unsupported_params) > 0:
-        adam_fallback = torch.optim.Adam(unsupported_params, **adam_kwargs)
-
-    if verbose and len(unsupported_layers) > 0:
-        print("[HybridSINGD] SINGD-unsupported layers -> Adam fallback:")
-        for name in sorted(unsupported_layers):
-            print(f"  - {name}")
-
-    return HybridSINGD(singd_opt, adam_fallback), unsupported_layers
-
-
-# =============================================================================
-# Training: Adam vs NGD (SINGD) comparison, with masks + LTH loop
-# =============================================================================
-
 def train_adam_vs_ngd_singd(
     model: nn.Module,
     criterion,
     adam_optimizer: torch.optim.Optimizer,
     train_loader,
     mask: dict,
-    pruner: "LTHPruner",
+    pruner: LTHPruner,
     n_epochs: int = 20,
     verbose: bool = True,
     print_freq: int = 5,
@@ -242,15 +61,8 @@ def train_adam_vs_ngd_singd(
 
     device = next(model.parameters()).device
 
-    # ---- NGD optimizer: SINGD + Adam fallback for SINGD-unsupported layers ----
-    ngd_optimizer, _unsupported_layers = build_singd_with_adam_fallback(
-        model,
-        ngd_lr=ngd_lr,
-        structure=structure,
-        adam_reference=adam_optimizer,
-        warn_unsupported=True,
-        verbose=verbose,
-    )
+    # External NGD optimizer (SINGD)
+    ngd_optimizer = SINGD(model, lr=ngd_lr, structures=(structure, structure))
 
     # Flatten mask once and build active index (non-masked positions)
     mask_flat = build_flat_mask(mask, model).to(device)
@@ -285,7 +97,8 @@ def train_adam_vs_ngd_singd(
             loss = criterion(outputs, targets)
             loss.backward()
 
-            # 2a) optional: zero grads on pruned weights so neither optimizer updates them
+            # 2a) optional: zero grads on pruned weights so neither optimizer
+            # will try to update them
             with torch.no_grad():
                 for name, p in model.named_parameters():
                     if p.grad is None:
@@ -315,7 +128,7 @@ def train_adam_vs_ngd_singd(
                 # restore params + grads back to θ_t
                 for p, b, g in zip(model.parameters(), params_before, grads_backup):
                     p.data.copy_(b)
-                    if g is not None and p.grad is not None:
+                    if g is not None:
                         p.grad.copy_(g)
 
             # ======================= REAL STEP ========================
@@ -422,14 +235,7 @@ def train_LTH_adam_vs_ngd(
     use_scheduler=False,
     save_path=None,
 ) -> dict:
-    """
-    Run LTH iterations with pruning, comparing Adam vs SINGD updates each batch,
-    with hybrid fallback for unsupported layers when SINGD is involved.
 
-    Returns:
-      dict with keys:
-        mask_list, test_acc, fim_list, cos_sim_list, cos_dist_list
-    """
     initial_state_dict = copy.deepcopy(model.state_dict())
     output_dict = {
         "mask_list": [],
