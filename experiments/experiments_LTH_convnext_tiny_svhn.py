@@ -223,7 +223,7 @@ def main():
     prunning_percentage = 0.1
     n_epochs = 130
     lr = 1e-3
-    batch_size = 2048
+    batch_size = 1024
     fim_size = 8000
 
     results = run_experiments(

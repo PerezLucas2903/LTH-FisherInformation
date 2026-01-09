@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, str(src_path))
 
 from fisher_information.fim import FisherInformationMatrix
-from models.image_classification_models import convnext_tiny
+from models.image_classification_models import densenet121
 from prunning_methods.LTH import train_LTH
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -29,27 +29,24 @@ def set_global_seed(seed: int) -> None:
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
-
 def build_dataloaders(
     batch_size: int = 1028,
     fim_size: int = 5000,
     seed: int = 42,
 ):
     """
-    CIFAR-10 loaders:
-    - train tf: RandomCrop(32,padding=4) + RandomHorizontalFlip + ToTensor + Normalize
+    SVHN loaders:
+    - train tf: RandomCrop(32,padding=4)   + ToTensor + Normalize
     - test tf: ToTensor + Normalize
     - fim_loader: balanced subset of size fim_size (fim_size/10 per class), batch_size=1
     """
     data_root = repo_root / "data"
-
-    # CIFAR-10 stats
-    mean = (0.4914, 0.4822, 0.4465)
-    std = (0.2023, 0.1994, 0.2010)
+    # SVHN stats
+    mean = (0.4377, 0.4438, 0.4728)
+    std = (0.1980, 0.2010, 0.1970)
 
     train_tf = T.Compose([
         T.RandomCrop(32, padding=4),
-        T.RandomHorizontalFlip(),
         T.ToTensor(),
         T.Normalize(mean, std),
     ])
@@ -59,11 +56,20 @@ def build_dataloaders(
         T.Normalize(mean, std),
     ])
 
-    train_set = torchvision.datasets.CIFAR100(
-        root=data_root, train=True, download=True, transform=train_tf
+
+    train_set = torchvision.datasets.SVHN(
+        root=data_root,
+        split="train",
+        download=True,
+        transform=train_tf
+
     )
-    test_set = torchvision.datasets.CIFAR100(
-        root=data_root, train=False, download=True, transform=test_tf
+
+    test_set = torchvision.datasets.SVHN(
+        root=data_root,
+        split="test",
+        download=True,
+        transform=test_tf
     )
 
     # Main train/test loaders
@@ -79,11 +85,11 @@ def build_dataloaders(
     )
 
     # Build a balanced subset for FIM
-    num_classes = 100
+    num_classes = 10
     assert fim_size % num_classes == 0, f"fim_size ({fim_size}) must be divisible by {num_classes}"
     per_class = fim_size // num_classes
 
-    targets = torch.tensor(train_set.targets)  # 50000 labels
+    targets = torch.tensor(train_set.labels)  # 50000 labels
     g = torch.Generator().manual_seed(seed)
 
     fim_indices: List[int] = []
@@ -100,7 +106,6 @@ def build_dataloaders(
     )
 
     return train_loader, fim_loader, test_loader
-
 
 def run_experiments(
     n_lth_runs: int = 10,
@@ -149,7 +154,7 @@ def run_experiments(
         print(f"========== Starting LTH run {run_idx + 1}/{n_lth_runs} (seed={seed}) ==========", flush=True)
         set_global_seed(seed)
 
-        model = convnext_tiny(num_classes=100).to(device)
+        model = densenet121(num_classes=10).to(device)
 
         LTH_args = {
             "model": model,
@@ -214,9 +219,9 @@ def main():
     base_seed = 42
     n_iterations = 10
     prunning_percentage = 0.1
-    n_epochs = 200
+    n_epochs = 150
     lr = 1e-3
-    batch_size = 512
+    batch_size = 1024
     fim_size = 8000
 
     results = run_experiments(
@@ -230,9 +235,9 @@ def main():
         fim_size=fim_size,
     )
 
-    results_dir = repo_root / "results" / "ConvNextTiny-CIFAR100"
+    results_dir = repo_root / "results" / "DenseNet121-SVHN"
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / "LTH_cifar100_convnext_tiny.pth"
+    out_path = results_dir / "LTH_svhn_densenet121.pth"
 
     print(f"\nSaving results to: {out_path}", flush=True)
     torch.save(results, out_path)

@@ -154,7 +154,7 @@ def main():
     print("repo_root:", repo_root, flush=True)
     print("data_root:", (repo_root / "data"), flush=True)
     print("device:", device, flush=True)
-    n_lth_runs = 10
+    n_lth_runs = 1
     base_seed = 42
     n_iterations = 10
     prunning_percentage = 0.1

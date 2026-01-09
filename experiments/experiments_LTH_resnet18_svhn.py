@@ -238,9 +238,9 @@ def main():
         fim_size=fim_size,
     )
 
-    results_dir = repo_root / "results" / "ResNet18-CIFAR10"
+    results_dir = repo_root / "results" / "ResNet18-SVHN"
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / "LTH_cifar10_resnet18_1.pth"
+    out_path = results_dir / "LTH_svhn_resnet18_1.pth"
 
     print(f"\nSaving results to: {out_path}", flush=True)
     torch.save(results, out_path)
