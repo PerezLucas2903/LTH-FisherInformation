@@ -30,13 +30,12 @@ def set_global_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def build_loaders(
-    data_dir: str,
+def build_dataloaders(
     batch_size: int,
-    device: torch.device,
     fim_size: int = 5000,
     seed: int = 42,
 ):
+    data_root = repo_root / "data"
     # STL10 stats (RGB)
     STL10_MEAN = (0.4467, 0.4398, 0.4066)
     STL10_STD  = (0.2241, 0.2215, 0.2239)
@@ -57,10 +56,10 @@ def build_loaders(
     ])
 
     train_set = torchvision.datasets.STL10(
-        root=data_dir, split="train", download=True, transform=train_tf
+        root=data_root, split="train", download=True, transform=train_tf
     )
     test_set = torchvision.datasets.STL10(
-        root=data_dir, split="test", download=True, transform=test_tf
+        root=data_root, split="test", download=True, transform=test_tf
     )
 
     num_classes = 10
