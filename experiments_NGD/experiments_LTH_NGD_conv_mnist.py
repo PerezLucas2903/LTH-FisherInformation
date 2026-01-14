@@ -159,7 +159,7 @@ def main():
     print("device:", device, flush=True)
     n_lth_runs = 1
     base_seed = 42
-    n_iterations = 3
+    n_iterations = 10
     prunning_percentage = 0.1
     n_epochs = 30
     lr = 1e-3
