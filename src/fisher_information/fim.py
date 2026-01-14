@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 class FisherInformationMatrix:
     def __init__(self, model: nn.Module, criterion: nn.Module, optimizer: torch.optim, dataloader: torch.utils.data.DataLoader, 
                  complete_fim: bool = True, layers: list = None, mask: dict = None, sampling_type: str = 'complete', 
-                 sampling_frequency: tuple = None):
+                 sampling_frequency: tuple = None, function_to_derive: str = 'loss'):
         
         """ Fisher information Matrix computation class.
         params:
@@ -20,6 +20,7 @@ class FisherInformationMatrix:
             mask: dict of masks to apply to gradients
             sampling_type: str, one of ['complete', 'x_in_x', 'x_skip_y']
             sampling_frequency: tuple, frequency for sampling gradients (only for 'x_in_x' and 'x_skip_y' sampling types). Example: (2,) for 'x_in_x' means take every 2nd gradient; (2,3) for 'x_skip_y' means take 2 gradients, skip 3 gradients in a cycle.
+            function_to_derive: str, function to derive gradients from, one of ['loss', 'output']
 
         """
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -29,6 +30,7 @@ class FisherInformationMatrix:
         self.mask = mask
         self.sampling_type = sampling_type
         self.sampling_frequency = sampling_frequency
+        self.function_to_derive = function_to_derive
 
         if self.layers is None and not self.complete_fim:
             raise ValueError("Either 'layers' must be specified or 'complete_fim' must be True.")
@@ -131,7 +133,15 @@ class FisherInformationMatrix:
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = self.criterion(outputs, targets)
-            loss.backward()
+
+            if self.function_to_derive == 'output':
+                # Sum outputs to get a scalar value to derive
+                # initial_grad = torch.ones_like(outputs)
+                # outputs.backward(gradient=initial_grad)
+                outputs_sum = outputs.sum()
+                outputs_sum.backward()
+            elif self.function_to_derive == 'loss':
+                loss.backward()
 
             if self.mask is not None:
                 with torch.no_grad():
@@ -154,7 +164,14 @@ class FisherInformationMatrix:
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = self.criterion(outputs, targets)
-            loss.backward()
+            if self.function_to_derive == 'output':
+                # Sum outputs to get a scalar value to derive
+                # initial_grad = torch.ones_like(outputs)
+                # outputs.backward(gradient=initial_grad)
+                outputs_sum = outputs.sum()
+                outputs_sum.backward()
+            elif self.function_to_derive == 'loss':
+                loss.backward()
 
             if self.mask is not None:
                 with torch.no_grad():

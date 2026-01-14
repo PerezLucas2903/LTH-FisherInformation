@@ -469,12 +469,12 @@ def train_LTH_adam_vs_ngd(
         if verbose:
             print(f"Test Accuracy after iteration {it+1}: {acc*100:.2f}%")
 
-        fim = FisherInformationMatrix(model, criterion, optimizer, fim_loader, **fim_args)
-        fim._fim_to_cpu()
+        #fim = FisherInformationMatrix(model, criterion, optimizer, fim_loader, **fim_args)
+        #fim._fim_to_cpu()
 
         output_dict["mask_list"].append(mask)
         output_dict["test_acc"].append(acc)
-        output_dict["fim_list"].append(fim)
+        #output_dict["fim_list"].append(fim)
         output_dict["cos_sim_list"].append(cos_sim_list)
         output_dict["cos_dist_list"].append(cos_dist_list)
 

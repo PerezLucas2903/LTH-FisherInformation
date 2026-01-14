@@ -190,33 +190,30 @@ def run_experiments(
 
         mask_list = output_dict["mask_list"]
         acc_list = output_dict["test_acc"]
-        fim_list = output_dict["fim_list"]
+        cos_dist = output_dict["cos_dist_list"]
 
         step = int(prunning_percentage * 100)
 
-        for i in range(len(fim_list)):
+        for i in range(len(acc_list)):
             remaining = 100 - step * i
             if remaining < 10:
                 continue
             if remaining not in results:
                 continue
 
-            fim_obj = fim_list[i]
+            # fim_obj = fim_list[i]
             acc = float(acc_list[i])
-            mask = mask_list[i]
+            #mask = mask_list[i]
+            cos_dist_value = cos_dist[i]
 
-            logdet_ratio: Dict[str, float] = dict(fim_obj.logdet_ratio)
-            logdet_ratio_per_dim: Dict[str, float] = dict(fim_obj.logdet_ratio_per_dim)
+            # logdet_ratio = float(fim_obj.logdet_ratio)
+            # logdet_ratio_per_dim = float(fim_obj.logdet_ratio_per_dim)
 
-            for name, value in logdet_ratio.items():
-                if math.isinf(value):
-                    print(
-                        f"[WARNING] logdet_ratio is {'+inf' if value > 0 else '-inf'} "
-                        f"for layer '{name}' at remaining={remaining}% (run={run_idx}, iter={i})",
-                        flush=True,
-                    )
-
-            results[remaining].append((acc, fim_obj, mask, logdet_ratio, logdet_ratio_per_dim))
+            # results[remaining].append(
+            #     (acc, fim_obj, mask, cos_dist_value, logdet_ratio, logdet_ratio_per_dim)
+            # )
+            results[remaining].append(
+                (acc, cos_dist_value))
 
     return results
 
