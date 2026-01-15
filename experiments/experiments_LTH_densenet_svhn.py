@@ -134,10 +134,9 @@ def run_experiments(
     fim_args = {
         "complete_fim": False,
         "layers": [
-            "features.0.0.weight",
-            "features.1.0.block.0.weight",
-            "features.1.1.block.0.weight",
-            "features.1.2.block.0.weight"
+            "features.conv0.weight", 
+            "features.denseblock1.denselayer2.conv2.weight", 
+            "features.denseblock4.denselayer15.conv2.weight"
         ],
         "mask": None,
         "sampling_type": "x_skip_y",

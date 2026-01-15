@@ -165,7 +165,7 @@ def run_experiments(
             "no_prunning_layers": None,
             "verbose": True,
             "print_freq": 10,
-            "use_scheduler": False,
+            "use_scheduler": True,
             "save_path": None,
         }
 
@@ -214,9 +214,9 @@ def main():
     base_seed = 42
     n_iterations = 10
     prunning_percentage = 0.1
-    n_epochs = 200
+    n_epochs = 300
     lr = 1e-3
-    batch_size = 512
+    batch_size = 1024
     fim_size = 8000
 
     results = run_experiments(

@@ -132,13 +132,13 @@ def run_experiments(
             fim_obj = fim_list[i]
             acc = float(acc_list[i])
             mask = mask_list[i]
+            
+            logdet_ratio: Dict[str, float] = dict(fim_obj.logdet_ratio)
+            logdet_ratio_per_dim: Dict[str, float] = dict(fim_obj.logdet_ratio_per_dim)
+            
 
-            logdet_ratio = float(fim_obj.logdet_ratio)
-            logdet_ratio_per_dim = float(fim_obj.logdet_ratio_per_dim)
+            results[remaining].append((acc, fim_obj, mask, logdet_ratio, logdet_ratio_per_dim))
 
-            results[remaining].append(
-                (acc, fim_obj, mask, logdet_ratio, logdet_ratio_per_dim)
-            )
 
 
     return results
