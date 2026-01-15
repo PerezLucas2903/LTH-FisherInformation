@@ -77,7 +77,7 @@ def run_experiments(
     # FIM configuration
     fim_args = {
         "complete_fim": False,
-        "layers": None,
+        "layers": ["net.0.weight", "net.3.weight", "net.7.weight"],
         "mask": None,
         "sampling_type": "complete",
         "sampling_frequency": None,
