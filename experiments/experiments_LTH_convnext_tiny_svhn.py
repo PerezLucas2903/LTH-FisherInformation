@@ -90,7 +90,7 @@ def build_dataloaders(
     assert fim_size % num_classes == 0, f"fim_size ({fim_size}) must be divisible by {num_classes}"
     per_class = fim_size // num_classes
 
-    targets = torch.tensor(train_set.targets)  # 50000 labels
+    targets = torch.tensor(train_set.labels)  # 50000 labels
     g = torch.Generator().manual_seed(seed)
 
     fim_indices: List[int] = []
@@ -117,7 +117,7 @@ def run_experiments(
     n_epochs: int = 1,
     lr: float = 1e-3,
     batch_size: int = 1028,
-    fim_size: int = 5000,
+    fim_size: int = 5000,   
 ) -> Dict[int, List[Tuple[float, FisherInformationMatrix, dict, Dict[str, float], Dict[str, float]]]]:
     """
     Returns:
