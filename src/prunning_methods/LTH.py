@@ -10,6 +10,7 @@ repo_root = Path().resolve().parents[0]
 sys.path.insert(0, str(repo_root / "src"))
 from fisher_information.fim import FisherInformationMatrix
 from models.train_test import *
+from fisher_information.jacobian import *
 class LTHPruner:
     def __init__(self, pruning_percentage: float, no_pruning_layers: list = None):
         """ Lottery Ticket Hypothesis Pruner.
@@ -55,10 +56,16 @@ def _train_LTH_one_iter(model, criterion, optimizer, train_loader, n_epochs=20, 
 
 def train_LTH(model, criterion, train_loader, test_loader, fim_loader, fim_args, lr = 1e-3,
               n_iterations=5, n_epochs=20, prunning_percentage=0.2, no_prunning_layers=None, 
-              verbose=True, print_freq=5,use_scheduler=False, save_path=None) -> dict:
+              verbose=True, print_freq=5,use_scheduler=False, save_path=None, calculate_fim=True,
+              calculate_jacobian=False, save_model=False) -> dict:
     
     initial_state_dict = copy.deepcopy(model.state_dict())
     output_dict = {'mask_list': [], 'test_acc': [], "fim_list" : []}
+    if calculate_jacobian:
+        output_dict['jacobian_list'] = []
+    if save_model:
+        output_dict['model_list'] = []
+
     for it in range(n_iterations):
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         current_prunning_percentage = prunning_percentage * it
@@ -70,13 +77,27 @@ def train_LTH(model, criterion, train_loader, test_loader, fim_loader, fim_args,
         fim_args['mask'] = mask
         if verbose:
             print(f"Test Accuracy after iteration {it+1}: {acc*100:.2f}%")
-        fim = FisherInformationMatrix(model, criterion, optimizer, fim_loader, **fim_args)
-        fim._fim_to_cpu()
+
+
+        if calculate_fim:
+            fim = FisherInformationMatrix(model, criterion, optimizer, fim_loader, **fim_args)
+            fim._fim_to_cpu()
+            output_dict['fim_list'].append(fim)
+
+        
 
         output_dict['mask_list'].append(mask)
         output_dict['test_acc'].append(acc)
-        output_dict['fim_list'].append(fim)
+        #output_dict['fim_list'].append(fim)
 
+        if calculate_jacobian:
+            jacobian = jacobian_param_l2_norms(model, train_loader)
+            output_dict['jacobian_list'].append(jacobian)
+
+
+        if save_model:
+            output_dict['model_list'].append(copy.deepcopy(model.state_dict()))
+            
         model = reset_weights(model, initial_state_dict)
 
     if save_path is not None:
