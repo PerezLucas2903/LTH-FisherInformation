@@ -180,7 +180,7 @@ def run_experiments(
             "no_prunning_layers": None,
             "verbose": True,
             "print_freq": 10,
-            "use_scheduler": False,
+            "use_scheduler": True,
             "save_path": None,
         }
 

@@ -195,7 +195,7 @@ def run_experiments(
             "structure": "diagonal", # "diag" or "dense"
             "verbose": True,
             "print_freq": 10,
-            "use_scheduler": False,
+            "use_scheduler": True,
             "save_path": None,
         }
 
@@ -242,9 +242,9 @@ def main():
     base_seed = 42
     n_iterations = 10
     prunning_percentage = 0.1
-    n_epochs = 150
+    n_epochs = 200
     lr = 1e-3
-    batch_size = 1028
+    batch_size = 256
     fim_size = 8000
 
     results = run_experiments(
