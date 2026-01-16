@@ -25,7 +25,7 @@ sys.path.insert(0, str(src_path))
 from fisher_information.fim import FisherInformationMatrix
 from models.train_test import *
 #from prunning_methods.LTH import *
-from models.image_classification_models import wide_resnet
+from models.image_classification_models import convnext_tiny
 from fisher_information.NGD import *
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -68,10 +68,10 @@ def build_dataloaders(
         T.Normalize(mean, std),
     ])
 
-    train_set = torchvision.datasets.CIFAR10(
+    train_set = torchvision.datasets.CIFAR100(
         root=data_root, train=True, download=True, transform=train_tf
     )
-    test_set = torchvision.datasets.CIFAR10(
+    test_set = torchvision.datasets.CIFAR100(
         root=data_root, train=False, download=True, transform=test_tf
     )
 
@@ -88,7 +88,7 @@ def build_dataloaders(
     )
 
     # Build a balanced subset for FIM
-    num_classes = 10
+    num_classes = 100
     assert fim_size % num_classes == 0, f"fim_size ({fim_size}) must be divisible by {num_classes}"
     per_class = fim_size // num_classes
 
@@ -112,6 +112,9 @@ def build_dataloaders(
 
 
 #train_loader, fim_loader, test_loader = build_loaders('./data', 1028, device)
+
+
+
 
 
 def run_experiments(
@@ -141,11 +144,10 @@ def run_experiments(
     fim_args = {
         "complete_fim": False,
         "layers": [
-            "layer1.0.conv1.weight",
-            "layer1.0.conv2.weight",
-            "layer1.1.conv1.weight",
-            "layer1.1.conv2.weight",
-            "layer2.0.conv1.weight",
+            "features.0.0.weight",
+            "features.1.0.block.0.weight",
+            "features.1.1.block.0.weight",
+            "features.1.2.block.0.weight"
         ],
         "mask": None,
         "sampling_type": "x_skip_y",
@@ -162,7 +164,7 @@ def run_experiments(
         print(f"========== Starting LTH run {run_idx + 1}/{n_lth_runs} (seed={seed}) ==========", flush=True)
         set_global_seed(seed)
 
-        model = wide_resnet(num_classes=10).to(device)
+        model = convnext_tiny(num_classes=10).to(device)
 
         LTH_args = {
             "model": model,
@@ -180,7 +182,7 @@ def run_experiments(
             "structure": "diagonal", # "diag" or "dense"
             "verbose": True,
             "print_freq": 10,
-            "use_scheduler": False,
+            "use_scheduler": True,
             "save_path": None,
         }
 
@@ -225,11 +227,11 @@ def main():
     # defaults
     n_lth_runs = 1
     base_seed = 42
-    n_iterations = 1
+    n_iterations = 10
     prunning_percentage = 0.1
-    n_epochs = 100
+    n_epochs = 300
     lr = 1e-3
-    batch_size = 1028
+    batch_size = 1024
     fim_size = 8000
 
     results = run_experiments(
@@ -243,9 +245,9 @@ def main():
         fim_size=fim_size,
     )
 
-    results_dir = repo_root / "results_NGD" / "wide_resnet-cifar10"
+    results_dir = repo_root / "results_NGD" / "convnext_tiny-CIFAR100"
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / "LTH_NGD_cifar10_wide_resnet.pth"
+    out_path = results_dir / "LTH_NGD_cifar100_convnext_tiny.pth"
 
     print(f"\nSaving results to: {out_path}", flush=True)
     torch.save(results, out_path)

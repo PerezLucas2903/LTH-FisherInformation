@@ -68,10 +68,10 @@ def build_dataloaders(
         T.Normalize(mean, std),
     ])
 
-    train_set = torchvision.datasets.CIFAR10(
+    train_set = torchvision.datasets.CIFAR100(
         root=data_root, train=True, download=True, transform=train_tf
     )
-    test_set = torchvision.datasets.CIFAR10(
+    test_set = torchvision.datasets.CIFAR100(
         root=data_root, train=False, download=True, transform=test_tf
     )
 
@@ -88,7 +88,7 @@ def build_dataloaders(
     )
 
     # Build a balanced subset for FIM
-    num_classes = 10
+    num_classes = 100
     assert fim_size % num_classes == 0, f"fim_size ({fim_size}) must be divisible by {num_classes}"
     per_class = fim_size // num_classes
 
@@ -180,7 +180,7 @@ def run_experiments(
             "structure": "diagonal", # "diag" or "dense"
             "verbose": True,
             "print_freq": 10,
-            "use_scheduler": False,
+            "use_scheduler": True,
             "save_path": None,
         }
 
@@ -229,7 +229,7 @@ def main():
     prunning_percentage = 0.1
     n_epochs = 100
     lr = 1e-3
-    batch_size = 1028
+    batch_size = 1024
     fim_size = 8000
 
     results = run_experiments(
@@ -243,9 +243,9 @@ def main():
         fim_size=fim_size,
     )
 
-    results_dir = repo_root / "results_NGD" / "wide_resnet-cifar10"
+    results_dir = repo_root / "results_NGD" / "wide_resnet-cifar100"
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / "LTH_NGD_cifar10_wide_resnet.pth"
+    out_path = results_dir / "LTH_NGD_cifar100_wide_resnet.pth"
 
     print(f"\nSaving results to: {out_path}", flush=True)
     torch.save(results, out_path)
