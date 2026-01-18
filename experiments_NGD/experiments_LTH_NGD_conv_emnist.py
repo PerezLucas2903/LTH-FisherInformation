@@ -105,7 +105,7 @@ def run_experiments(
         print(f"========== Starting LTH run {run_idx + 1}/{n_lth_runs} (seed={seed}) ==========")
         set_global_seed(seed)
 
-        model = ConvModelEMNIST().to(device)
+        model = ConvModelEMNIST(n_classes=26).to(device)
 
         LTH_args = {
             "model": model,
