@@ -254,7 +254,7 @@ def train_adam_vs_ngd_singd(
 
     # Flatten mask once and build active index (non-masked positions)
     mask_flat = build_flat_mask(mask, model).to(device)
-    active_idx = mask_flat.bool()
+    active_idx = mask_flat.bool().to('cpu')
 
     loss_list = []
     cos_sim_list = []
@@ -300,7 +300,7 @@ def train_adam_vs_ngd_singd(
                     p.grad.clone() if p.grad is not None else None
                     for p in model.parameters()
                 ]
-                params_before_flat = _flatten_params(params_before)
+                params_before_flat = _flatten_params(params_before).to('cpu')
 
             # ====================== VIRTUAL STEP ======================
             virtual_optimizer.step()
@@ -309,7 +309,7 @@ def train_adam_vs_ngd_singd(
                 pruner.apply_mask(model, mask)
 
             with torch.no_grad():
-                params_after_virtual_flat = _flatten_params(model.parameters())
+                params_after_virtual_flat = _flatten_params(model.parameters()).to('cpu')
                 delta_virtual = params_after_virtual_flat - params_before_flat
 
                 # restore params + grads back to θ_t
@@ -325,7 +325,7 @@ def train_adam_vs_ngd_singd(
                 pruner.apply_mask(model, mask)
 
             with torch.no_grad():
-                params_after_real_flat = _flatten_params(model.parameters())
+                params_after_real_flat = _flatten_params(model.parameters()).to('cpu')
                 delta_real = params_after_real_flat - params_before_flat
 
                 # map to "delta_adam" and "delta_ngd" irrespective of who is real
