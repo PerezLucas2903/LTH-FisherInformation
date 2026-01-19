@@ -163,7 +163,7 @@ def run_experiments(
         print(f"========== Starting LTH run {run_idx + 1}/{n_lth_runs} (seed={seed}) ==========", flush=True)
         set_global_seed(seed)
 
-        model = resnet18(num_classes=10).to(device)
+        model = resnet18(num_classes=100).to(device)
 
         LTH_args = {
             "model": model,
