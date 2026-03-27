@@ -410,6 +410,7 @@ def train_LTH_adam_vs_ngd(
     test_loader,
     fim_loader,
     fim_args,
+    compared_optimizer = 'adam', # 'adam' or 'sgd' (only for the optimizer to be compared against SINGD; the "real" optimizer in train_adam_vs_ngd_singd)
     lr=1e-3,
     n_iterations=5,
     n_epochs=20,
@@ -441,7 +442,12 @@ def train_LTH_adam_vs_ngd(
 
     for it in range(n_iterations):
         # we still construct an Adam optimizer; if real_opt="singd" this one is virtual
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        if compared_optimizer == 'adam':
+            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        elif compared_optimizer == 'sgd':
+            optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+        else:
+            raise ValueError("Optimizer must be 'adam' or 'sgd'")
         current_prunning_percentage = prunning_percentage * it
 
         if verbose:
