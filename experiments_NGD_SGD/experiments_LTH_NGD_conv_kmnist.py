@@ -116,7 +116,8 @@ def run_experiments(
             "print_freq": 10,
             "use_scheduler": False,
             "save_path": None,
-            "compared_optimizer": 'sgd'
+            "compared_optimizer": 'sgd',
+            "real_opt": 'singd'
         }
 
         output_dict = train_LTH_adam_vs_ngd(**LTH_args)

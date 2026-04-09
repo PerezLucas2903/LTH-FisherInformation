@@ -186,7 +186,8 @@ def run_experiments(
             "print_freq": 10,
             "use_scheduler": False,
             "save_path": None,
-            "compared_optimizer": 'sgd'
+            "compared_optimizer": 'sgd',
+            "real_opt": 'singd'
         }
 
         

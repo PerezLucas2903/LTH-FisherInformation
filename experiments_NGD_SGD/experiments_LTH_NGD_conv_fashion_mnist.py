@@ -116,7 +116,8 @@ def run_experiments(
             "print_freq": 10,
             "use_scheduler": False,
             "save_path": None,
-            "compared_optimizer": 'sgd'
+            "compared_optimizer": 'sgd',
+            "real_opt": 'singd'
         }
 
         output_dict = train_LTH_adam_vs_ngd(**LTH_args)
@@ -176,7 +177,7 @@ def main():
     # Saving results
     results_dir = repo_root / "results_NGD_SGD" / "Conv-FashionMNIST"
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / "LTH_NGD_fashion_mnist_convmodel.pth"
+    out_path = results_dir / "LTH_NGD_fashion_mnist_convmodel_2.pth"
 
 
     print(f"\nSaving results to: {out_path}")
