@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 class FisherInformationMatrix:
     def __init__(self, model: nn.Module, criterion: nn.Module, optimizer: torch.optim, dataloader: torch.utils.data.DataLoader, 
                  complete_fim: bool = True, layers: list = None, mask: dict = None, sampling_type: str = 'complete', 
-                 sampling_frequency: tuple = None, function_to_derive: str = 'loss'):
+                 sampling_frequency: tuple = None, _lambda: float = 1e-8, function_to_derive: str = 'loss'):
         
         """ Fisher information Matrix computation class.
         params:
@@ -31,6 +31,7 @@ class FisherInformationMatrix:
         self.sampling_type = sampling_type
         self.sampling_frequency = sampling_frequency
         self.function_to_derive = function_to_derive
+        self._lambda=_lambda
 
         if self.layers is None and not self.complete_fim:
             raise ValueError("Either 'layers' must be specified or 'complete_fim' must be True.")
@@ -127,7 +128,6 @@ class FisherInformationMatrix:
 
     def _compute_fim_complete(self, model, dataloader, optimizer) -> dict:
         model.eval()
-        eps = 1e-8
         for inputs, targets in dataloader:
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             optimizer.zero_grad()
@@ -154,11 +154,10 @@ class FisherInformationMatrix:
 
 
         self.fim['complete'] = torch.divide(self.fim['complete'], len(dataloader.dataset))
-        self.fim['complete'] += eps * torch.eye(self.fim['complete'].shape[0], dtype=self.fim['complete'].dtype).to(self.device)
+        self.fim['complete'] += self._lambda * torch.eye(self.fim['complete'].shape[0], dtype=self.fim['complete'].dtype).to(self.device)
 
     def _compute_fim_layerwise(self, model, dataloader, optimizer) -> dict:
         model.eval()
-        eps = 1e-8
         for inputs, targets in dataloader:
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             optimizer.zero_grad()
@@ -188,15 +187,15 @@ class FisherInformationMatrix:
             self.fim[name] = torch.divide(self.fim[name], len(dataloader.dataset))
             n = self.fim[name].shape[0]
             idx = torch.arange(n, device=self.fim[name].device)
-            self.fim[name][idx, idx] += eps
+            self.fim[name][idx, idx] += self._lambda
 
-            #self.fim[name] += eps * torch.eye(self.fim[name].shape[0], dtype=self.fim[name].dtype).to(self.device)
+            #self.fim[name] += self._lambda * torch.eye(self.fim[name].shape[0], dtype=self.fim[name].dtype).to(self.device)
 
-    def _to_correlation_single(self, key, eps):
+    def _to_correlation_single(self, key, _lambda):
         d = torch.diagonal(self.fim[key], dim1=-2, dim2=-1)  # (..., n)
 
-        if eps > 0:
-            d = d + eps
+        if _lambda > 0:
+            d = d + _lambda
         inv_sqrt_d = 1.0 / torch.sqrt(d)
         # constrói D^{-1/2} como diagonal batelada
         Dinv2 = torch.diag_embed(inv_sqrt_d)     # (..., n, n)
@@ -207,13 +206,13 @@ class FisherInformationMatrix:
         """
         A: (..., n, n) SPD (real simétrica).
         Retorna C = D^{-1/2} A D^{-1/2} com diag(C)=1.
-        eps: opcional p/ estabilidade (raramente necessário em SPD bem condicionado).
+        _lambda: opcional p/ estabilidade (raramente necessário em SPD bem condicionado).
         """
-        eps = 0 #1e-8
+        _lambda = 0 #1e-8
         self.corr_fim = {}
         self.corr_fim_logdet_ratio = {}
         for key in self.fim:
-            self._to_correlation_single(key, eps)
+            self._to_correlation_single(key, _lambda)
 
     def compute_fim(self, model, dataloader, optimizer) -> dict:
         if self.complete_fim:
