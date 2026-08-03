@@ -58,6 +58,13 @@ def train_LTH(model, criterion, train_loader, test_loader, fim_loader, fim_args,
               n_iterations=5, n_epochs=20, prunning_percentage=0.2, no_prunning_layers=None, 
               verbose=True, print_freq=5,use_scheduler=False, save_path=None, calculate_fim=True,
               calculate_jacobian=False, save_model=False) -> dict:
+
+    prunining_percentage_type = type(prunning_percentage)
+    if prunining_percentage_type not in [float, list]:
+        raise ValueError("prunning_percentage must be a float or a list of floats")
+    
+    if prunining_percentage_type == list and len(prunning_percentage) != n_iterations:
+        raise ValueError("Length of prunning_percentage list must be equal to n_iterations")
     
     initial_state_dict = copy.deepcopy(model.state_dict())
     output_dict = {'mask_list': [], 'test_acc': [], "fim_list" : []}
@@ -68,7 +75,11 @@ def train_LTH(model, criterion, train_loader, test_loader, fim_loader, fim_args,
 
     for it in range(n_iterations):
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-        current_prunning_percentage = prunning_percentage * it
+        if prunining_percentage_type == list:
+            current_prunning_percentage = prunning_percentage[it]
+        elif prunining_percentage_type == float:
+            current_prunning_percentage = prunning_percentage * it
+
         if verbose:
             print(f"LTH Iteration {it+1}/{n_iterations}")
             
