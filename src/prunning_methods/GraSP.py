@@ -57,12 +57,9 @@ class GraSPPruner:
     ):
         """
         GraSP pruner (Gradient Signal Preservation).
-        no_pruning_layers: list of parameter names ('layer.weight') to exclude from pruning.
-        num_classes: number of classes in the dataset.
-        samples_per_class: number of samples per class for GraSP scoring.
-        num_iters: how many GraSP iterations to run.
-        T: temperature scaling for outputs.
-        reinit: whether to reinitialize Linear layers in the copied network.
+
+        Scores are computed once and can then be reused to create masks at
+        different sparsity levels. Reusing the same scores guarantees nested masks.
         """
         self.no_pruning_layers = no_pruning_layers or []
         self.num_classes = num_classes
@@ -71,64 +68,40 @@ class GraSPPruner:
         self.T = T
         self.reinit = reinit
 
-    def compute_mask(
+    def compute_scores(
         self,
         model: nn.Module,
         train_loader,
         device,
-        keep_ratio: float,
     ) -> dict:
-        """
-        Compute GraSP pruning mask for the given model.
-        keep_ratio: fraction of parameters to keep (0–1).
-        Returns: dict param_name -> mask tensor {0,1}.
-        """
+        """Compute GraSP scores once for all prunable weights."""
         model.to(device)
 
-        # Early exit: no pruning
-        if keep_ratio >= 1.0:
-            mask_dict = {}
-            for name, param in model.named_parameters():
-                if name.endswith("bias") or name in self.no_pruning_layers:
-                    mask_dict[name] = torch.ones_like(param, device=device)
-                else:
-                    mask_dict[name] = torch.ones_like(param, device=device)
-            return mask_dict
-
-        eps = 1e-10
-        keep_ratio = float(keep_ratio)
-
-        # Work on a copy of the model
         net = copy.deepcopy(model).to(device)
         net.zero_grad()
 
-        # Collect prunable layers (Conv2d, Linear) and their names
+        # Collect prunable Conv/Linear weights
         prunable_layers = []
         for name, layer in net.named_modules():
             if isinstance(layer, (nn.Conv2d, nn.Linear)):
                 param_name = name + ".weight"
-                if param_name in self.no_pruning_layers:
-                    continue
-                prunable_layers.append((name, layer))
+                if param_name not in self.no_pruning_layers:
+                    prunable_layers.append((name, layer))
 
-        weights = [layer.weight for (_, layer) in prunable_layers]
-
-        # Optionally reinit Linear layers in the copied network
+        # Optional reinitialization used by the original implementation
         if self.reinit:
-            for name, layer in prunable_layers:
+            for _, layer in prunable_layers:
                 if isinstance(layer, nn.Linear):
                     nn.init.xavier_normal_(layer.weight)
 
-        # Ensure gradients are tracked for weights
-        for w in weights:
-            w.requires_grad_(True)
+        weights = [layer.weight for _, layer in prunable_layers]
 
         grad_w = None
         inputs_one = []
         targets_one = []
 
-        # ========== First phase: accumulate grad_w ==========
-        for it in range(self.num_iters):
+        # First phase: accumulate gradients
+        for _ in range(self.num_iters):
             inputs, targets = grasp_fetch_data(
                 train_loader,
                 num_classes=self.num_classes,
@@ -136,99 +109,125 @@ class GraSPPruner:
             )
 
             N = inputs.shape[0]
-            din = inputs.clone()
-            dtarget = targets.clone()
-
-            # Split data into two halves (as in original GraSP code)
-            inputs_one.append(din[: N // 2])
-            targets_one.append(dtarget[: N // 2])
-            inputs_one.append(din[N // 2 :])
-            targets_one.append(dtarget[N // 2 :])
+            inputs_one.extend([inputs[:N // 2].clone(), inputs[N // 2:].clone()])
+            targets_one.extend([targets[:N // 2].clone(), targets[N // 2:].clone()])
 
             inputs = inputs.to(device)
             targets = targets.to(device)
 
-            # First half
-            outputs = net(inputs[: N // 2]) / self.T
-            loss = F.cross_entropy(outputs, targets[: N // 2])
-            grad_w_p = autograd.grad(loss, weights, create_graph=False)
-            if grad_w is None:
-                grad_w = list(grad_w_p)
-            else:
-                for idx in range(len(grad_w)):
-                    grad_w[idx] += grad_w_p[idx]
+            for x, y in (
+                (inputs[:N // 2], targets[:N // 2]),
+                (inputs[N // 2:], targets[N // 2:]),
+            ):
+                outputs = net(x) / self.T
+                loss = F.cross_entropy(outputs, y)
+                grad = autograd.grad(loss, weights, create_graph=False)
 
-            # Second half
-            outputs = net(inputs[N // 2 :]) / self.T
-            loss = F.cross_entropy(outputs, targets[N // 2 :])
-            grad_w_p = autograd.grad(loss, weights, create_graph=False)
-            if grad_w is None:
-                grad_w = list(grad_w_p)
-            else:
-                for idx in range(len(grad_w)):
-                    grad_w[idx] += grad_w_p[idx]
+                if grad_w is None:
+                    grad_w = list(grad)
+                else:
+                    for i in range(len(grad_w)):
+                        grad_w[i] += grad[i]
 
-        # ========== Second phase: accumulate Hessian-gradient product ==========
-        for it in range(len(inputs_one)):
-            inputs = inputs_one.pop(0).to(device)
-            targets = targets_one.pop(0).to(device)
+        # Second phase: Hessian-gradient product
+        for inputs, targets in zip(inputs_one, targets_one):
+            inputs = inputs.to(device)
+            targets = targets.to(device)
 
             outputs = net(inputs) / self.T
             loss = F.cross_entropy(outputs, targets)
-
             grad_f = autograd.grad(loss, weights, create_graph=True)
 
-            z = 0
-            for idx in range(len(weights)):
-                z += (grad_w[idx].data * grad_f[idx]).sum()
+            z = sum(
+                (grad_w[i].data * grad_f[i]).sum()
+                for i in range(len(weights))
+            )
             z.backward()
 
-        # ========== Build grads dict (scores) for original model param names ==========
-        grads = {}
-        # prunable_layers is in same order as weights/grad_f/grad_w
-        for (name, layer) in prunable_layers:
-            param_name = name + ".weight"
-            grads[param_name] = -layer.weight.data * layer.weight.grad  # -θ ⊙ H g
+        # GraSP scores: -theta * H g
+        return {
+            name + ".weight": -layer.weight.data * layer.weight.grad
+            for name, layer in prunable_layers
+        }
 
-        # Gather all scores in a single vector and normalise
-        all_scores = torch.cat([g.view(-1) for g in grads.values()])
-        norm_factor = torch.abs(all_scores.sum()) + eps
-        all_scores.div_(norm_factor)
+    def mask_from_scores(
+        self,
+        model: nn.Module,
+        scores: dict,
+        keep_ratio: float,
+        device,
+    ) -> dict:
+        """
+        Build a mask from fixed GraSP scores.
 
+        If the same `scores` dict is reused for different keep_ratios,
+        the resulting masks are nested by construction.
+        """
+        keep_ratio = float(keep_ratio)
+
+        if keep_ratio >= 1.0:
+            return {
+                name: torch.ones_like(param, device=device)
+                for name, param in model.named_parameters()
+            }
+
+        all_scores = torch.cat([score.view(-1) for score in scores.values()])
         total_params = all_scores.numel()
         num_params_to_rm = int(total_params * (1.0 - keep_ratio))
         num_params_to_rm = max(0, min(num_params_to_rm, total_params))
 
         if num_params_to_rm == 0:
-            # Nothing to prune; full masks
-            mask_dict = {}
-            for name, param in model.named_parameters():
-                mask_dict[name] = torch.ones_like(param, device=device)
-            return mask_dict
+            return {
+                name: torch.ones_like(param, device=device)
+                for name, param in model.named_parameters()
+            }
 
-        # Threshold on scores (we prune the largest scores)
-        threshold, _ = torch.topk(all_scores, num_params_to_rm, sorted=True)
-        acceptable_score = threshold[-1]
+        # GraSP prunes the largest scores
+        threshold = torch.topk(
+            all_scores,
+            num_params_to_rm,
+            sorted=True,
+        ).values[-1]
 
-        # Build keep masks for prunable weights
-        keep_masks = {}
-        for param_name, g in grads.items():
-            score = g / norm_factor
-            keep_masks[param_name] = (score <= acceptable_score).float()
+        keep_masks = {
+            name: (score <= threshold).float()
+            for name, score in scores.items()
+        }
 
-        # Now build full mask_dict (for all params in the original model)
         mask_dict = {}
         for name, param in model.named_parameters():
             if name.endswith("bias") or name in self.no_pruning_layers:
-                # Never prune biases or protected layers
                 mask_dict[name] = torch.ones_like(param, device=device)
             elif name in keep_masks:
                 mask_dict[name] = keep_masks[name].to(device)
             else:
-                # Non-conv/linear params: keep them
                 mask_dict[name] = torch.ones_like(param, device=device)
 
         return mask_dict
+
+    def compute_mask(
+        self,
+        model: nn.Module,
+        train_loader,
+        device,
+        keep_ratio: float,
+        scores: dict = None,
+    ) -> dict:
+        """
+        Convenience wrapper.
+
+        Pass precomputed `scores` when creating multiple sparsity levels so that
+        all masks are guaranteed to be nested.
+        """
+        if scores is None:
+            scores = self.compute_scores(model, train_loader, device)
+
+        return self.mask_from_scores(
+            model=model,
+            scores=scores,
+            keep_ratio=keep_ratio,
+            device=device,
+        )
 
     @torch.no_grad()
     def apply_mask(self, model: nn.Module, mask_dict: dict) -> nn.Module:
@@ -248,6 +247,7 @@ def train_grasp(
     fim_args,
     keep_ratio,
     epochs,
+    scores=None,
     lr=1e-3,
     num_classes=10,
     samples_per_class=25,
@@ -281,6 +281,7 @@ def train_grasp(
         train_loader=train_loader,
         device=device,
         keep_ratio=keep_ratio,
+        scores=scores,
     )
     pruner.apply_mask(model, mask)
 
