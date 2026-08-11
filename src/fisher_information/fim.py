@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 class FisherInformationMatrix:
     def __init__(self, model: nn.Module, criterion: nn.Module, optimizer: torch.optim, dataloader: torch.utils.data.DataLoader, 
                  complete_fim: bool = True, layers: list = None, mask: dict = None, sampling_type: str = 'complete', 
-                 sampling_frequency: tuple = None, _lambda: float = 1e-8, function_to_derive: str = 'loss'):
+                 sampling_frequency: tuple = None, _lambda: float = 1e-8, function_to_derive: str = 'loss', fim_dtype: torch.dtype = torch.float32):
         
         """ Fisher information Matrix computation class.
         params:
@@ -32,6 +32,7 @@ class FisherInformationMatrix:
         self.sampling_frequency = sampling_frequency
         self.function_to_derive = function_to_derive
         self._lambda=_lambda
+        self.fim_dtype = fim_dtype
 
         if self.layers is None and not self.complete_fim:
             raise ValueError("Either 'layers' must be specified or 'complete_fim' must be True.")
@@ -51,10 +52,9 @@ class FisherInformationMatrix:
         if complete_fim:
             n_params = self.concat_mask.sum().item() if self.concat_mask is not None else sum(p.numel() for p in model.parameters() if p.requires_grad)
             #n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-            self.fim = {'complete': torch.zeros((n_params, n_params), device=self.device)}
+            self.fim = {"complete": torch.zeros((n_params, n_params), device=self.device, dtype=self.fim_dtype)}
         else:
-            self.fim = {name: torch.zeros((mask.sum(), mask.sum()), device=self.device) for name, mask in self.sampling_masks.items() if name in self.layers}
-
+            self.fim = {name: torch.zeros((mask.sum(), mask.sum()), device=self.device, dtype=self.fim_dtype) for name, mask in self.sampling_masks.items() if name in self.layers}
         self.compute_fim(model.to(self.device), dataloader, optimizer)
         self.compute_logdet_metrics()
 
@@ -149,7 +149,7 @@ class FisherInformationMatrix:
                         if name in self.mask.keys():
                             param.grad *= self.mask[name]
 
-            grad = torch.cat( list( p.grad.detach().view(-1) for p in model.parameters() ) ).view(-1)
+            grad = torch.cat([p.grad.detach().view(-1) for p in model.parameters()]).to(dtype=self.fim_dtype)
             self.fim['complete'] +=  torch.outer(grad[self.concat_mask], grad[self.concat_mask])
 
 
@@ -180,7 +180,7 @@ class FisherInformationMatrix:
 
             for name, param in model.named_parameters():
                 if param.requires_grad and name in self.layers:
-                    grad = param.grad.view(-1).detach()[self.sampling_masks[name]]
+                    grad = (param.grad.detach().view(-1)[self.sampling_masks[name]].to(dtype=self.fim_dtype))
                     self.fim[name] += torch.outer(grad, grad)
 
         for name in self.fim:
