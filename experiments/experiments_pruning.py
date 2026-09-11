@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 # Required arguments: --method (random, lth, snip, grasp, rigl),
-# --model (resnet18, densenet) and --dataset (cifar10, svhn, stl10).
+# --model (resnet18, densenet, vgg16) and --dataset (cifar10, svhn, stl10).
 # Optional arguments configure epochs, seeds, learning rate, batch/FIM sizes
 # and the output path; run this file with --help to see all available options.
 
@@ -47,15 +47,23 @@ FIM_LAYERS = {
         "features.denseblock1.denselayer2.conv2.weight",
         "features.denseblock4.denselayer15.conv2.weight",
     ],
+    "vgg16": [
+        "features.0.weight",
+        "features.2.weight",
+        "features.5.weight",
+    ],
 }
 
 DEFAULT_BATCH_SIZES = {
-    ("resnet18", "cifar10"): 1028,
+    ("resnet18", "cifar10"): 1024,
     ("resnet18", "svhn"): 256,
     ("resnet18", "stl10"): 256,
     ("densenet", "cifar10"): 2048,
     ("densenet", "svhn"): 1024,
     ("densenet", "stl10"): 1024,
+    ("vgg16", "cifar10"): 256,
+    ("vgg16", "svhn"): 256,
+    ("vgg16", "stl10"): 128,
 }
 
 
@@ -220,7 +228,9 @@ def build_fim_args(model_name: str) -> dict:
 def build_model(model_name: str, device: torch.device) -> nn.Module:
     if model_name == "resnet18":
         return resnet18(num_classes=10).to(device)
-    return densenet121(num_classes=10).to(device)
+    if model_name == "densenet":
+        return densenet121(num_classes=10).to(device)
+    return torchvision.models.vgg16(num_classes=10).to(device)
 
 
 def add_output_to_results(
@@ -423,7 +433,7 @@ def parse_args() -> argparse.Namespace:
         "--model",
         required=True,
         type=str.lower,
-        choices=["resnet18", "densenet", "densenet121"],
+        choices=["resnet18", "densenet", "densenet121", "vgg16"],
     )
     parser.add_argument(
         "--dataset",
@@ -492,9 +502,11 @@ def main() -> None:
             output=output,
         )
 
-    architecture_name = (
-        "ResNet18" if model_name == "resnet18" else "DenseNet121"
-    )
+    architecture_name = {
+        "resnet18": "ResNet18",
+        "densenet": "DenseNet121",
+        "vgg16": "VGG16",
+    }[model_name]
     results_dir = repo_root / "results" / (
         f"{architecture_name}-{args.dataset.upper()}"
     )
@@ -507,9 +519,11 @@ def main() -> None:
         "grasp": "GraSP",
         "rigl": "RigL",
     }[args.method]
-    model_file_name = (
-        "resnet18" if model_name == "resnet18" else "densenet121"
-    )
+    model_file_name = {
+        "resnet18": "resnet18",
+        "densenet": "densenet121",
+        "vgg16": "vgg16",
+    }[model_name]
     output_path = args.output or (
         results_dir
         / f"{method_name}_{args.dataset}_{model_file_name}.pth"
